@@ -55,7 +55,7 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['uid', 'name', 'day', 'guesses', 'won', 'points', 'ts'])
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'day', 'guesses', 'won', 'points', 'secs', 'ts'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.day is int
         && request.resource.data.day >= dayNow() - 1
@@ -65,6 +65,8 @@ service cloud.firestore {
         && request.resource.data.guesses >= 1 && request.resource.data.guesses <= 7
         && request.resource.data.won is bool
         && (request.resource.data.won || request.resource.data.guesses == 7)
+        && request.resource.data.secs is int
+        && request.resource.data.secs >= 0 && request.resource.data.secs <= 86400
         && request.resource.data.points == pointsFor(request.resource.data.won, request.resource.data.guesses)
         && request.resource.data.ts == request.time
         && request.resource.data.name == get(/databases/$(database)/documents/players/$(request.auth.uid)).data.name
@@ -77,6 +79,26 @@ service cloud.firestore {
     function chPath(id) { return /databases/$(database)/documents/challenges/$(id); }
     function attPath(id, uid) { return /databases/$(database)/documents/attempts/$(id + '_' + uid); }
     function playerPath(uid) { return /databases/$(database)/documents/players/$(uid); }
+    function limitPath(uid, day) { return /databases/$(database)/documents/limits/$(uid + '_' + string(day)); }
+
+    // How many challenges a player has taken on each day (max 5).
+    match /limits/{lid} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'day', 'n'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.day is int
+        && request.resource.data.day >= dayNow() - 1
+        && request.resource.data.day <= dayNow() + 1
+        && lid == request.auth.uid + '_' + string(request.resource.data.day)
+        && request.resource.data.n == 1;
+      allow update: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['n'])
+        && request.resource.data.n == resource.data.n + 1
+        && request.resource.data.n <= 5;
+      allow delete: if false;
+    }
 
     match /challenges/{cid} {
       allow read: if true;
@@ -126,7 +148,7 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['ch', 'uid', 'name', 'setter', 'sname', 'stake', 'target', 'g', 'status', 'won', 'ts'])
+        && request.resource.data.keys().hasOnly(['ch', 'uid', 'name', 'setter', 'sname', 'stake', 'target', 'day', 'g', 'status', 'won', 'ts'])
         && request.resource.data.uid == request.auth.uid
         && aid == request.resource.data.ch + '_' + request.auth.uid
         && get(chPath(request.resource.data.ch)).data.open == true
@@ -137,6 +159,10 @@ service cloud.firestore {
         && request.resource.data.stake == get(chPath(request.resource.data.ch)).data.stake
         && request.resource.data.target == get(chPath(request.resource.data.ch)).data.target
         && request.resource.data.name == get(playerPath(request.auth.uid)).data.name
+        && request.resource.data.day is int
+        && getAfter(limitPath(request.auth.uid, request.resource.data.day)).data.n
+             == (exists(limitPath(request.auth.uid, request.resource.data.day))
+                 ? get(limitPath(request.auth.uid, request.resource.data.day)).data.n : 0) + 1
         && request.resource.data.g == []
         && request.resource.data.status == 'playing'
         && request.resource.data.won == false
@@ -147,11 +173,12 @@ service cloud.firestore {
       allow update: if request.auth != null
         && resource.data.uid == request.auth.uid
         && resource.data.status == 'playing'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['g', 'status', 'won', 'ts'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['g', 'status', 'won', 'secs', 'ts'])
         && request.resource.data.g is list
         && request.resource.data.g.size() >= resource.data.g.size()
         && request.resource.data.g.size() <= resource.data.target
         && request.resource.data.status in ['playing', 'done']
+        && (!('secs' in request.resource.data) || (request.resource.data.secs is int && request.resource.data.secs >= 0 && request.resource.data.secs <= 86400))
         && request.resource.data.ts == request.time
         && (request.resource.data.status == 'playing'
             || request.resource.data.won == true
