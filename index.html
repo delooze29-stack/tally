@@ -474,7 +474,7 @@ function mountSignIn(sh,after){
       if(taken){err.textContent=`"${n}" is already taken. Choose a different nickname.`;pwBlock.hidden=true;btn.hidden=true;return false}
       checked=slug(n);ok.textContent=`"${n}" is free. Now choose a password.`;ok.hidden=false;pwBlock.hidden=false;btn.hidden=false;pw.focus();
       return true;
-    }catch(e){console.warn(e);err.textContent='Could not check that name. Check your connection.';return false}
+    }catch(e){console.warn(e);err.textContent=e.code==='permission-denied'?'Name check is blocked by the database rules. The game owner needs to update them.':'Could not check that name. Check your connection.';return false}
     finally{chk.disabled=false;chk.textContent='Check'}
   }
   chk.addEventListener('click',checkName);
