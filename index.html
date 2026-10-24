@@ -288,7 +288,9 @@ function startDaily(){
   const p=puzzle(DAY*7919+13), saved=store.get('tally.day');
   S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,posted:false,max:MAX};
   S.elapsed=0;S.runFrom=0;S.secs=0;
-  if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0}
+  if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;
+    /* A game started before the timer existed has guesses but no time: don't record a misleading time. */
+    if(saved.elapsed==null&&S.guesses.length)S.noTime=true}
   draw();
 }
 function startPractice(){
@@ -308,10 +310,10 @@ const clockMs=()=>(S.elapsed||0)+(S.runFrom?Date.now()-S.runFrom:0);
 const fmtTime=sec=>{sec=Math.max(0,Math.round(sec));const h=sec/3600|0,m=(sec%3600)/60|0,x=sec%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
 function runClock(){if(!S.done&&!S.runFrom)S.runFrom=Date.now()}
 function pauseClock(){if(S.runFrom){S.elapsed=clockMs();S.runFrom=0;persist()}}
-function stopClock(){pauseClock();S.secs=Math.max(1,Math.round(S.elapsed/1000))}
+function stopClock(){pauseClock();S.secs=S.noTime?0:Math.max(1,Math.round(S.elapsed/1000))}
 function renderClock(){
   const c=$('clock');if(!c||!S)return;
-  c.textContent=fmtTime(S.done&&S.secs?S.secs:clockMs()/1000);
+  c.textContent=S.noTime?'–:––':fmtTime(S.done&&S.secs?S.secs:clockMs()/1000);
   c.className='clock'+(S.done&&S.won?' done':S.runFrom?' run':'');
 }
 setInterval(renderClock,500);
