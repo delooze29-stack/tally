@@ -386,7 +386,17 @@ function openSheet(html,mount){
   if(mount)mount($('sheet'));
 }
 function closeSheet(){modal=false;$('scrim').hidden=true;clearInterval(tick)}
-$('scrim').addEventListener('click',e=>{if(e.target===$('scrim')||e.target.closest('[data-close]'))closeSheet()});
+/* Close only on a deliberate tap on the dark backdrop: the press must start AND end there,
+   so dragging out of a text box (selecting a name, autofill menus) never closes the window.
+   Windows with a sign-in form never close from the backdrop at all, only from the X. */
+let downOnScrim=false;
+$('scrim').addEventListener('pointerdown',e=>{downOnScrim=e.target===$('scrim')});
+$('scrim').addEventListener('click',e=>{
+  if(e.target.closest('[data-close]')){closeSheet();return}
+  const tappedBackdrop=e.target===$('scrim')&&downOnScrim;
+  downOnScrim=false;
+  if(tappedBackdrop&&!$('sheet').querySelector('form'))closeSheet();
+});
 
 /* ---------- Help ---------- */
 function exampleRow(){
@@ -597,7 +607,7 @@ $('btnHelp').addEventListener('click',showHelp);
 $('btnBoard').addEventListener('click',()=>showBoard());
 $('btnPractice').addEventListener('click',()=>{if(S.mode==='practice'&&!S.done&&S.guesses.length===0)return toast('Practice code ready');startPractice()});
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&modal){closeSheet();return}
+  if(e.key==='Escape'&&modal){if(!(e.target.closest&&e.target.closest('form')))closeSheet();return}
   if(modal||e.ctrlKey||e.metaKey||e.altKey)return;
   if(/^\d$/.test(e.key))press(e.key);
   else if(e.key==='Backspace'){e.preventDefault();press('del')}
