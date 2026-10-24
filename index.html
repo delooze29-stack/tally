@@ -406,7 +406,18 @@ function finish(r){
 
 
 /* ---------- Leaderboard data ---------- */
-async function loadPlayer(){
+/* Signing up fires the form and the background sign-in listener at the same moment.
+   Both used to create the player record, and the second one was refused, which showed
+   "Could not sign in" even though it had worked. Now they share one load. */
+let playerP=null, playerUid=null, postP=null;
+function loadPlayer(){
+  if(!user){player=null;return Promise.resolve()}
+  if(playerP&&playerUid===user.uid)return playerP;
+  playerUid=user.uid;
+  playerP=loadPlayerOnce().catch(e=>{playerP=null;throw e});
+  return playerP;
+}
+async function loadPlayerOnce(){
   if(!user){player=null;return}
   const ref=db.collection('players').doc(user.uid);
   const snap=await ref.get();
@@ -421,7 +432,12 @@ async function loadPlayer(){
     if(!(await nref.get()).exists)await nref.set({uid:user.uid});
   }catch(e){console.warn('name claim',e)}
 }
-async function postScore(){
+function postScore(){
+  if(postP)return postP;
+  postP=postScoreOnce().finally(()=>{postP=null});
+  return postP;
+}
+async function postScoreOnce(){
   if(!user||!db||S.mode!=='daily'||!S.done||S.posted)return 'none';
   try{
     if(!player)await loadPlayer();
@@ -567,6 +583,11 @@ function mountSignIn(sh,after){
       after&&after();
     }catch(e){
       console.warn(e);
+      if(auth.currentUser&&slug((auth.currentUser.email||'').split('@')[0])===slug(n)){
+        user=auth.currentUser;
+        try{await loadPlayer()}catch(x){console.warn(x)}
+        if(player){toast(`Signed in as ${player.name}`);after&&after();return}
+      }
       err.textContent=e.code==='taken'?`"${n}" is already taken. Choose a different nickname.`:
         ['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-login-credentials'].includes(e.code)?'Nickname or password is wrong.':
         e.code==='auth/too-many-requests'?'Too many tries. Wait a minute and try again.':
