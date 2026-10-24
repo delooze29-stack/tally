@@ -162,6 +162,8 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .chip{font-weight:700;font-size:14px;font-family:var(--mono)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid2>*{min-width:0}
+.flabel{font-size:13px;font-weight:600}
+.cluebox{padding:12px;border-radius:10px;border:1px dashed var(--line);background:var(--bg);font-weight:600;line-height:1.4}
 .field input,.field select,.field textarea{width:100%;min-width:0}
 .inline input{width:auto}
 #chBody,#lbBody{display:grid;gap:14px;align-content:start}
@@ -598,6 +600,8 @@ const FV=()=>firebase.firestore.FieldValue;
 function chKey(id){let h=2166136261;for(const c of id)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
 function encCode(code,id){const r=rng(chKey(id));return 't1'+[...code].map(d=>(+d+Math.floor(r()*10))%10).join('')}
 function decCode(c,id){const r=rng(chKey(id));return [...c.slice(2)].map(d=>(+d-Math.floor(r()*10)+10)%10).join('')}
+/* The clue is always worked out by the game from the real code, so it can't be wrong or misleading. */
+function chClue(c){return mathsClue([...decCode(c.c,c.id)].map(Number),rng(c.cs|0))}
 
 let attemptsCache=null, attemptsAt=0;
 async function loadAttempts(force){
@@ -656,7 +660,7 @@ function chRow(c,mineAtt){
   return `<li class="ch${chFocus===c.id?' focus':''}" id="ch-${c.id}">
     <div class="ch-top"><strong>${esc(c.setterName)}</strong><span class="stake">${c.stake} pts</span></div>
     <div class="ch-meta">Crack it in ${c.target} · ${c.tries} tried · ${c.cracks} cracked · ${timeLeft(c.expires)}</div>
-    <div class="ch-clue">“${esc(c.clue)}”</div>
+    <div class="ch-clue">“${esc(chClue(c))}”</div>
     <div class="ch-act">${action}</div>
     <div class="ch-confirm" hidden></div>
   </li>`;
@@ -711,7 +715,7 @@ async function acceptChallenge(c){
   startChallenge({...c,tries:c.tries+1},att);
 }
 function startChallenge(c,att){
-  S={mode:'challenge',ch:c,code:decCode(c.c,c.id),clue:c.clue,guesses:(att&&att.g)||[],current:'',
+  S={mode:'challenge',ch:c,code:decCode(c.c,c.id),clue:chClue(c),guesses:(att&&att.g)||[],current:'',
      done:!!att&&att.status==='done',won:!!att&&!!att.won,max:c.target};
   closeSheet();draw();
   if(S.done)showResult();else toast(`Crack ${c.setterName}'s code in ${c.target}`);
@@ -742,30 +746,27 @@ function fillSet(el){
       <div class="field"><label for="chTarget">Crack it in</label><select id="chTarget">${[3,4,5,6,7].map(n=>`<option value="${n}"${n===4?' selected':''}>${n} guesses</option>`).join('')}</select></div>
       <div class="field"><label for="chStake">Stake</label><select id="chStake">${Array.from({length:maxStake},(_,i)=>i+1).map(n=>`<option value="${n}"${n===Math.min(5,maxStake)?' selected':''}>${n} pts</option>`).join('')}</select></div>
     </div>
-    <div class="field"><label for="chClue">Clue for players</label><textarea id="chClue" maxlength="100" rows="2" placeholder="Type your code first and a maths clue appears here"></textarea>
-      <button class="link" type="button" id="newClue">Give me a different maths clue</button></div>
+    <div class="field"><span class="flabel">Clue players will see</span><div class="cluebox" id="chClue">Type your code and the game will make a maths clue from it.</div>
+      <button class="link" type="button" id="newClue">Give me a different clue</button></div>
     <div class="err" id="chErr"></div>
     <button class="btn primary" type="submit" id="chMake">Set challenge</button>
   </form><div id="chDone"></div>`;
   const code=el.querySelector('#chCode'), clue=el.querySelector('#chClue'), err=el.querySelector('#chErr');
-  let auto=true, seed=Math.floor(Math.random()*1e9);
-  const autoClue=()=>{if(/^\d{5}$/.test(code.value)&&auto)clue.value=mathsClue([...code.value].map(Number),rng(seed))};
+  let seed=Math.floor(Math.random()*1e9);
+  const autoClue=()=>{clue.textContent=/^\d{5}$/.test(code.value)?mathsClue([...code.value].map(Number),rng(seed)):'Type your code and the game will make a maths clue from it.'};
   code.addEventListener('input',()=>{code.value=code.value.replace(/\D/g,'').slice(0,5);autoClue()});
-  clue.addEventListener('input',()=>{auto=clue.value.trim()===''});
-  el.querySelector('#newClue').addEventListener('click',()=>{if(!/^\d{5}$/.test(code.value)){err.textContent='Type your 5-digit code first.';return}err.textContent='';auto=true;seed++;autoClue()});
+  el.querySelector('#newClue').addEventListener('click',()=>{if(!/^\d{5}$/.test(code.value)){err.textContent='Type your 5-digit code first.';return}err.textContent='';seed=(seed+1)%1e9;autoClue()});
   el.querySelector('#chForm').addEventListener('submit',async e=>{
     e.preventDefault();err.textContent='';
-    const c=code.value, t=+el.querySelector('#chTarget').value, s=+el.querySelector('#chStake').value, cl=clue.value.trim();
+    const c=code.value, t=+el.querySelector('#chTarget').value, s=+el.querySelector('#chStake').value;
     if(!/^\d{5}$/.test(c)){err.textContent='Your code needs exactly 5 digits.';return}
-    if(cl.length<3){err.textContent='Add a clue so players have something to go on.';return}
-    if(cl.includes(c)){err.textContent="Your clue gives the code away. Try a maths clue instead.";return}
     const btn=el.querySelector('#chMake');btn.disabled=true;btn.textContent='Setting…';
     try{
       const mine=await db.collection('challenges').where('setter','==',user.uid).get();
       const open=mine.docs.filter(d=>d.data().open&&d.data().expires>Date.now()).length;
       if(open>=CH_MAX_OPEN){err.textContent=`You already have ${CH_MAX_OPEN} challenges open. Close one under Mine first.`;btn.disabled=false;btn.textContent='Set challenge';return}
       const ref=db.collection('challenges').doc();
-      await ref.set({setter:user.uid,setterName:player.name,c:encCode(c,ref.id),clue:cl,target:t,stake:s,
+      await ref.set({setter:user.uid,setterName:player.name,c:encCode(c,ref.id),cs:seed,target:t,stake:s,
         created:FV().serverTimestamp(),expires:Date.now()+CH_DAYS*864e5,open:true,tries:0,cracks:0});
       el.querySelector('#chForm').hidden=true;
       shareChallengeBox(el.querySelector('#chDone'),{id:ref.id,target:t,stake:s},true);
@@ -791,7 +792,7 @@ async function fillMine(el){
     const cNet=attemptsCache.filter(a=>a.ch===c.id).reduce((s,a)=>s+attemptDelta(a,user.uid),0);
     return `<li class="ch"><div class="ch-top"><strong>Code ${decCode(c.c,c.id)}</strong><span class="stake ${cNet>0?'good':cNet<0?'bad':''}">${signed(cNet)} pts</span></div>
       <div class="ch-meta">Crack it in ${c.target} · stake ${c.stake} · ${c.tries} tried · ${c.cracks} cracked · ${live?timeLeft(c.expires):'closed'}</div>
-      <div class="ch-clue">“${esc(c.clue)}”</div>
+      <div class="ch-clue">“${esc(chClue(c))}”</div>
       ${live?`<div class="ch-act"><button class="btn small" data-share="${c.id}">Copy link</button><button class="btn small" data-close-ch="${c.id}">Close it</button></div><div data-sharebox="${c.id}"></div>`:''}
     </li>`}).join('');
   const takeRows=taken.map(a=>`<li class="ch"><div class="ch-top"><strong>${esc(a.sname||'A player')}'s code</strong><span class="stake ${a.won?'good':'bad'}">${a.status==='playing'?'in play':signed(a.won?a.stake:-a.stake)+' pts'}</span></div>

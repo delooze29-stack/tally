@@ -82,12 +82,12 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['setter', 'setterName', 'c', 'clue', 'target', 'stake', 'created', 'expires', 'open', 'tries', 'cracks'])
+        && request.resource.data.keys().hasOnly(['setter', 'setterName', 'c', 'cs', 'target', 'stake', 'created', 'expires', 'open', 'tries', 'cracks'])
         && request.resource.data.setter == request.auth.uid
         && request.resource.data.setterName == get(playerPath(request.auth.uid)).data.name
         && request.resource.data.c is string && request.resource.data.c.size() == 7
-        && request.resource.data.clue is string
-        && request.resource.data.clue.size() >= 3 && request.resource.data.clue.size() <= 100
+        && request.resource.data.cs is int
+        && request.resource.data.cs >= 0 && request.resource.data.cs < 1000000000
         && request.resource.data.target is int
         && request.resource.data.target >= 3 && request.resource.data.target <= 7
         && request.resource.data.stake is int
