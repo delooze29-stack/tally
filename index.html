@@ -297,11 +297,19 @@ if(stats.points==null)stats.points=0;
 let prefs=store.get('tally.prefs')||{seenHelp:false};
 let S, busy=false, modal=false;
 
+/* Each player's daily game is saved separately on the phone, so a second player
+   signing in on the same phone gets their own fresh board. Signed-out play is saved as "anon". */
+const dayKey=()=>'tally.day.'+(user?user.uid:'anon');
+(function migrateOldSave(){
+  const old=store.get('tally.day');if(!old)return;
+  if(old.n===DAY&&!old.posted&&!store.get('tally.day.anon'))store.set('tally.day.anon',old);
+  try{localStorage.removeItem('tally.day')}catch(e){}
+})();
 function startDaily(){
-  const p=puzzle(DAY*7919+13), saved=store.get('tally.day');
+  const p=puzzle(DAY*7919+13), saved=store.get(dayKey());
   S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,posted:false,max:MAX};
   S.elapsed=0;S.runFrom=0;S.secs=0;
-  if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;
+  if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;S.remote=saved.remote||null;
     /* A game started before the timer existed has guesses but no time: don't record a misleading time. */
     if(saved.noTime||(saved.elapsed==null&&S.guesses.length))S.noTime=true}
   draw();
@@ -312,7 +320,7 @@ function startPractice(){
   draw();toast('Practice code ready');
 }
 function persist(){
-  if(S.mode==='daily')store.set('tally.day',{n:DAY,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs,noTime:!!S.noTime});
+  if(S.mode==='daily')store.set(dayKey(),{n:DAY,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs,noTime:!!S.noTime,remote:S.remote||null});
   if(S.mode==='challenge')store.set('tally.chclock.'+S.ch.id,{elapsed:clockMs(),secs:S.secs});
 }
 
@@ -417,6 +425,43 @@ function finish(r){
   setTimeout(showResult,1500);
 }
 
+
+/* ---------- Switching player ----------
+   Runs whenever someone signs in or out. Loads that player's own board for today:
+   - a signed-out game in progress (not yet on the leaderboard) moves over to the player who signs in;
+   - if they've already played today on another phone, the board is locked with their score. */
+let switchP=null, switchUid=null;
+function switchUser(){
+  const uid=user?user.uid:'anon';
+  if(switchP&&switchUid===uid)return switchP;
+  switchUid=uid;
+  switchP=(async()=>{
+    let res='none';
+    if(user){
+      await loadPlayer();
+      const anon=store.get('tally.day.anon'), mine=store.get(dayKey());
+      if(anon&&anon.n===DAY&&!anon.posted&&(anon.guesses||[]).length&&!(mine&&mine.n===DAY&&(mine.guesses||[]).length)){
+        store.set(dayKey(),anon);store.set('tally.day.anon',null);
+      }
+      try{
+        const cur=store.get(dayKey());
+        if(!(cur&&cur.n===DAY&&cur.done)){
+          const snap=await db.collection('scores').doc(`${DAY}_${user.uid}`).get();
+          if(snap.exists){const d=snap.data();
+            store.set(dayKey(),{n:DAY,guesses:[],done:true,won:d.won,posted:true,secs:d.secs||0,elapsed:0,remote:{guesses:d.guesses,points:d.points}})}
+        }
+      }catch(e){console.warn(e)}
+    }
+    if(!S||S.mode==='daily'){
+      const wasFresh=!S||!S.guesses.length;
+      startDaily();
+      if(S.remote&&wasFresh)toast(`You've already played today: ${S.won?S.remote.guesses:'X'}/7, ${S.remote.points} pts`);
+    }
+    if(user)res=await postScore();
+    return res;
+  })().catch(e=>{console.warn(e);switchP=null;return 'error'});
+  return switchP;
+}
 
 /* ---------- Leaderboard data ---------- */
 /* Signing up fires the form and the background sign-in listener at the same moment.
@@ -591,8 +636,8 @@ function mountSignIn(sh,after){
       }else{
         await auth.signInWithEmailAndPassword(emailFor(n),pw.value);
       }
-      user=auth.currentUser;await loadPlayer();
-      const res=await postScore();
+      user=auth.currentUser;
+      const res=await switchUser();
       toast(res==='posted'?`Welcome ${player.name}. Today's score added`:`Signed in as ${player.name}`);
       after&&after();
     }catch(e){
@@ -687,7 +732,7 @@ function showBoard(tab){
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><button class="link" id="signOut">Sign out</button></div>`:'';
   openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>`,sh=>{
     sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
-    const so=sh.querySelector('#signOut');if(so)so.addEventListener('click',async()=>{await auth.signOut();user=null;player=null;toast('Signed out');showBoard()});
+    const so=sh.querySelector('#signOut');if(so)so.addEventListener('click',async()=>{await auth.signOut();user=null;player=null;await switchUser();toast('Signed out');showBoard()});
     fillBoard(sh.querySelector('#lbBody'));
   });
 }
@@ -989,7 +1034,7 @@ function copyText(txt,area,msg){
 /* ---------- Result ---------- */
 function untilMidnight(){const n=new Date(),m=new Date(n);m.setHours(24,0,0,0);const s=Math.max(0,Math.floor((m-n)/1000));return [s/3600|0,(s%3600)/60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
 function shareText(){
-  const n=S.guesses.length,sc=S.won?n:'X',pts=pointsFor(S.won,n);
+  const n=S.remote?S.remote.guesses:S.guesses.length,sc=S.won?n:'X',pts=pointsFor(S.won,n);
   const head=S.mode==='daily'?`Tally No. ${DAY}  ${sc}/7 · ${pts} pts`:
     S.mode==='challenge'?(S.won?`I cracked ${S.ch.setterName}'s Tally challenge in ${n}/${S.max} (+${S.ch.stake} pts)`:`${S.ch.setterName}'s Tally challenge beat me (X/${S.max})`):`Tally practice ${sc}/7`;
   const rows=S.guesses.map(g=>score(g,S.code).state.map(s=>s==='hit'?'🟩':s==='near'?'🟨':'⬜').join(''));
@@ -997,7 +1042,7 @@ function shareText(){
 }
 function showResult(){
   if(S.mode==='challenge'){showChallengeResult();return}
-  const n=S.guesses.length,pts=pointsFor(S.won,n);
+  const n=S.remote?S.remote.guesses:S.guesses.length,pts=pointsFor(S.won,n);
   const answer=[...S.code].map(d=>`<div class="tile ${S.won?'hit':'miss'}"><span class="d">${d}</span><span class="a"></span></div>`).join('');
   const title=S.won?`Cracked in ${n} · ${pts} pts`:'Out of guesses · 0 pts';
   const timeLine=S.secs?`<div class="timeline"><span class="label">Time taken</span><b>${fmtTime(S.secs)}</b></div>`:'';
@@ -1054,12 +1099,12 @@ document.addEventListener('keydown',e=>{
 });
 
 buildKeypad();startDaily();
-if(auth)auth.onAuthStateChanged(async u=>{user=u;if(u){try{await loadPlayer();await postScore()}catch(e){console.warn(e)}}else player=null;authReadyResolve()});
+if(auth)auth.onAuthStateChanged(async u=>{user=u;if(!u)player=null;try{await switchUser()}catch(e){console.warn(e)}authReadyResolve()});
 else authReadyResolve();
 const link=/^#c([A-Za-z0-9]{10,40})$/.exec(location.hash);
 if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
 else if(!prefs.seenHelp)setTimeout(showHelp,300);
-else if(S.done)setTimeout(showResult,400);
+else authReady.then(()=>{if(S.mode==='daily'&&S.done&&!modal)setTimeout(showResult,300)});
 })();
 </script>
 </body>
