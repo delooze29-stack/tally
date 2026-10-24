@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Day number the game uses (day 1 = 23 Oct 2026). Allow one day either side for time zones.
+    function dayNow() {
+      return int(math.floor((request.time.toMillis() - 1792713600000) / 86400000)) + 1;
+    }
+    function pointsFor(won, guesses) {
+      return won ? [0, 10, 8, 6, 4, 3, 2, 1][guesses] : 0;
+    }
+    function scorePath(day, uid) {
+      return /databases/$(database)/documents/scores/$(string(day) + '_' + uid);
+    }
+
+    match /players/{uid} {
+      allow read: if true;
+
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'total', 'played', 'wins', 'last'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 16
+        && request.resource.data.total == 0
+        && request.resource.data.played == 0
+        && request.resource.data.wins == 0
+        && request.resource.data.last == 0;
+
+      // Totals can only move by exactly the score being saved in the same write.
+      allow update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'total', 'played', 'wins', 'last'])
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.last is int
+        && !exists(scorePath(request.resource.data.last, uid))
+        && existsAfter(scorePath(request.resource.data.last, uid))
+        && request.resource.data.total == resource.data.total
+             + getAfter(scorePath(request.resource.data.last, uid)).data.points
+        && request.resource.data.played == resource.data.played + 1
+        && request.resource.data.wins == resource.data.wins
+             + (getAfter(scorePath(request.resource.data.last, uid)).data.won ? 1 : 0);
+
+      allow delete: if false;
+    }
+
+    match /scores/{scoreId} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'day', 'guesses', 'won', 'points', 'ts'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.day is int
+        && request.resource.data.day >= dayNow() - 1
+        && request.resource.data.day <= dayNow() + 1
+        && scoreId == string(request.resource.data.day) + '_' + request.auth.uid
+        && request.resource.data.guesses is int
+        && request.resource.data.guesses >= 1 && request.resource.data.guesses <= 7
+        && request.resource.data.won is bool
+        && (request.resource.data.won || request.resource.data.guesses == 7)
+        && request.resource.data.points == pointsFor(request.resource.data.won, request.resource.data.guesses)
+        && request.resource.data.ts == request.time
+        && request.resource.data.name == get(/databases/$(database)/documents/players/$(request.auth.uid)).data.name
+        && getAfter(/databases/$(database)/documents/players/$(request.auth.uid)).data.last == request.resource.data.day;
+
+      allow update, delete: if false;
+    }
+  }
+}

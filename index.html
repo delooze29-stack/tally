@@ -3,38 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Tally: crack the daily 5-digit code in 7 guesses.">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
 <title>Tally</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Tally: crack the daily 5-digit code in 7 guesses. Daily maths clue, points leaderboard.">
+<meta property="og:title" content="Tally">
+<meta property="og:description" content="Crack today's 5-digit code in 7 guesses. Can you beat my score?">
+<meta name="theme-color" content="#151a23">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2322915d'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='700' font-size='36' text-anchor='middle' fill='white'%3E7%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@500;700&family=Big+Shoulders+Display:wght@800;900&family=Figtree:wght@400;600;700&display=swap">
 <style>
-/* Layout: one-screen phone app — header, clue slip, 6×5 odometer board, number pad pinned at the bottom */
+/* Layout: one-screen phone app: header, clue slip, 7x5 board on a dark panel, number pad at the bottom */
 :root{
   --bg:#edf0f4; --surface:#ffffff; --ink:#151a23; --muted:#5b6475; --line:#c6cdd8; --empty:#d6dde7;
-  --hit:#22915d; --near:#d4951a; --miss:#5f6a7e; --on:#ffffff; --accent:#2747c4;
+  --hit:#22915d; --near:#d4951a; --miss:#5f6a7e; --on:#ffffff; --accent:#2747c4; --bad:#c23b3b;
   --panel:#1c2431; --slot:#283244; --slotline:#3d4960; --typed:#f5f7fb; --typedink:#151a23;
   --shade:rgba(20,30,50,.07); --scrim:rgba(15,20,30,.45);
   --display:"Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
   --mono:"Azeret Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --body:"Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme:light;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+@media (prefers-color-scheme: dark){:root{
   --bg:#10141b; --surface:#1a2029; --ink:#e7ebf2; --muted:#97a0b1; --line:#2f3745; --empty:#283041;
-  --hit:#2aa76c; --near:#dca23a; --miss:#4f596c; --on:#ffffff; --accent:#8299ff;
+  --hit:#2aa76c; --near:#dca23a; --miss:#4f596c; --on:#ffffff; --accent:#8299ff; --bad:#ef6b6b;
   --panel:#1b222d; --slot:#252e3c; --slotline:#3a4559; --typed:#eef1f6; --typedink:#151a23;
   --shade:rgba(0,0,0,.28); --scrim:rgba(0,0,0,.6); color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#10141b; --surface:#1a2029; --ink:#e7ebf2; --muted:#97a0b1; --line:#2f3745; --empty:#283041;
-  --hit:#2aa76c; --near:#dca23a; --miss:#4f596c; --on:#ffffff; --accent:#8299ff;
-  --panel:#1b222d; --slot:#252e3c; --slotline:#3a4559; --typed:#eef1f6; --typedink:#151a23;
-  --shade:rgba(0,0,0,.28); --scrim:rgba(0,0,0,.6); color-scheme:dark}
 
 html{height:100%;box-sizing:border-box}
 *,*::before,*::after{box-sizing:inherit}
-body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent}
+body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;overflow:hidden;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
 button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -100,13 +100,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .ex{display:grid;grid-template-columns:repeat(5,44px);gap:6px;--tile:44px}
 .legend{display:grid;gap:6px;font-size:14px;line-height:1.4}
 .legend b{font-family:var(--mono)}
-.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;border-top:1px solid var(--line)}
-.toggle span{display:flex;flex-direction:column;gap:2px}
-.toggle small{color:var(--muted);font-size:13px}
-.toggle input{width:22px;height:22px;accent-color:var(--hit)}
+.ptable{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:center;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ptable span{padding:5px 0;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}
+.ptable b{padding:6px 0;font-size:15px}
 
 .nums{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center}
-.nums b{display:block;font-family:var(--mono);font-size:26px;font-variant-numeric:tabular-nums}
+.nums b{display:block;font-family:var(--mono);font-size:24px;font-variant-numeric:tabular-nums}
 .nums span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .dist{display:grid;gap:5px}
 .bar{display:grid;grid-template-columns:14px 1fr;gap:8px;align-items:center;font-family:var(--mono);font-size:13px}
@@ -115,23 +114,44 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .label{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .answer{display:flex;gap:6px;--tile:46px}
 .actions{display:flex;flex-wrap:wrap;gap:8px}
-.btn{flex:1 1 140px;height:46px;border-radius:10px;border:1px solid var(--line);background:transparent;font-weight:700}
+.btn{flex:1 1 140px;min-height:46px;border-radius:10px;border:1px solid var(--line);background:transparent;font-weight:700;padding:0 14px}
 .btn.primary{background:var(--hit);border-color:var(--hit);color:var(--on)}
+.btn:disabled{opacity:.6;cursor:default}
 .next{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-top:12px;border-top:1px solid var(--line)}
 .next b{font-family:var(--mono);font-size:22px;font-variant-numeric:tabular-nums}
 textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:10px}
+.note{padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px;line-height:1.45}
+.note.ok{border-left:4px solid var(--hit)}
+
+/* sign-in + leaderboard */
+.form{display:grid;gap:10px}
+.field{display:grid;gap:4px}
+.field label{font-size:13px;font-weight:600}
+.field input{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 12px;font:inherit;font-size:16px}
+.err{color:var(--bad);font-size:14px;font-weight:600;min-height:1em}
+.tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:4px;border-radius:10px;background:var(--bg)}
+.tabs button{border:none;background:transparent;border-radius:7px;height:36px;font-weight:700;font-size:13px;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px var(--shade)}
+.board-list{display:grid;gap:2px;margin:0;padding:0;list-style:none}
+.board-list li{display:grid;grid-template-columns:28px 1fr auto auto;gap:10px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.board-list li.me{background:var(--bg);border-radius:8px}
+.board-list .pos{font-family:var(--mono);font-weight:700;color:var(--muted);text-align:right}
+.board-list .nm{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board-list .gs{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.board-list .pt{font-family:var(--mono);font-weight:700;font-size:16px;min-width:44px;text-align:right}
+.who{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px}
+.link{border:none;background:none;color:var(--accent);font-weight:700;padding:4px 0;text-decoration:underline}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-
 <div class="app">
   <header class="top">
     <div class="brand"><h1>Tally</h1><span class="sub" id="sub"></span></div>
     <nav class="tools">
       <button class="icon" id="btnHelp" aria-label="How to play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.3-2.7 4"/><path d="M12 17.6v.1"/></svg></button>
-      <button class="icon" id="btnStats" aria-label="Statistics"><svg viewBox="0 0 24 24"><path d="M5 20V12M12 20V5M19 20v-6"/></svg></button>
+      <button class="icon" id="btnBoard" aria-label="Leaderboard"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/></svg></button>
       <button class="icon" id="btnPractice" aria-label="Practice with a random code"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/></svg></button>
     </nav>
   </header>
@@ -142,14 +162,36 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 <div class="toast" id="toast" hidden role="status"></div>
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 (function(){
-const MAX=7, LEN=5;
-const POINTS=[10,8,6,4,3,2,1];
+const SITE='delooze29-stack.github.io/tally';
+const MAX=7, LEN=5, POINTS=[10,8,6,4,3,2,1];
 const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const RM=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
+/* ---------- Firebase ---------- */
+let auth=null, db=null, user=null, player=null;
+try{
+  firebase.initializeApp({
+    apiKey:"AIzaSyDZxOrRdaHyyUnXvdfIIhMKrD6Qf-jOnBA",
+    authDomain:"tally-51fbb.firebaseapp.com",
+    projectId:"tally-51fbb",
+    storageBucket:"tally-51fbb.firebasestorage.app",
+    messagingSenderId:"689149814037",
+    appId:"1:689149814037:web:efb6916458e636d7ae751c"
+  });
+  auth=firebase.auth(); db=firebase.firestore();
+}catch(e){console.warn('Leaderboard offline',e)}
+
+const slug=n=>n.trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+const emailFor=n=>slug(n)+'@players.tally.game';
+
+/* ---------- Daily code ---------- */
 const EPOCH=Date.UTC(2026,9,23);
 function todayNum(){const d=new Date();return Math.floor((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-EPOCH)/864e5)+1}
 const DAY=todayNum();
@@ -160,7 +202,6 @@ function puzzle(seed){
   for(let i=0;i<LEN;i++)code.push(Math.floor(r()*10));
   return {code:code.join(''),clue:mathsClue(code,r)};
 }
-
 const P=['1st','2nd','3rd','4th','5th'];
 function mathsClue(c,r){
   const pick=n=>Math.floor(r()*n), special=[];
@@ -188,25 +229,29 @@ function score(g,c){
   }
   return {state,arrow};
 }
+const pointsFor=(won,n)=>won?POINTS[n-1]:0;
 
-let stats=store.get('tally.stats')||{played:0,wins:0,streak:0,best:0,dist:[0,0,0,0,0,0],last:0};
+/* ---------- Local stats ---------- */
+let stats=store.get('tally.stats')||{played:0,wins:0,streak:0,best:0,dist:[0,0,0,0,0,0,0],last:0};
 while(stats.dist.length<MAX)stats.dist.push(0);
-let prefs=store.get('tally.prefs')||{hard:false,seenHelp:false};
+if(stats.points==null)stats.points=0;
+let prefs=store.get('tally.prefs')||{seenHelp:false};
 let S, busy=false, modal=false;
 
 function startDaily(){
   const p=puzzle(DAY*7919+13), saved=store.get('tally.day');
-  S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,hard:prefs.hard};
-  if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.hard=!!saved.hard}
+  S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,posted:false};
+  if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted}
   draw();
 }
 function startPractice(){
   const p=puzzle(Math.floor(Math.random()*1e9));
-  S={mode:'practice',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,hard:prefs.hard};
+  S={mode:'practice',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false};
   draw();toast('Practice code ready');
 }
-function persist(){if(S.mode==='daily')store.set('tally.day',{n:DAY,guesses:S.guesses,done:S.done,won:S.won,hard:S.hard})}
+function persist(){if(S.mode==='daily')store.set('tally.day',{n:DAY,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted})}
 
+/* ---------- Board ---------- */
 function draw(){
   const date=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
   $('sub').textContent=S.mode==='daily'?`No. ${DAY} · ${date}`:'Practice · not counted';
@@ -240,7 +285,6 @@ function drawKeys(){
   S.guesses.forEach(g=>{const res=score(g,S.code);for(let i=0;i<LEN;i++){const s=res.state[i];if(!best[g[i]]||rank[s]>rank[best[g[i]]])best[g[i]]=s}});
   document.querySelectorAll('.key[data-k]').forEach(k=>{const d=k.dataset.k;if(/^\d$/.test(d))k.className='key'+(best[d]?' '+best[d]:'')});
 }
-
 function buildKeypad(){
   const kp=$('keypad');
   ['1','2','3','4','5','6','7','8','9','0'].forEach(d=>{const b=document.createElement('button');b.className='key';b.dataset.k=d;b.textContent=d;kp.appendChild(b)});
@@ -248,7 +292,6 @@ function buildKeypad(){
   const en=document.createElement('button');en.className='key wide enter';en.dataset.k='enter';en.textContent='Enter';kp.appendChild(en);
   kp.addEventListener('click',e=>{const k=e.target.closest('.key');if(k){press(k.dataset.k);k.blur()}});
 }
-
 function press(k){
   if(busy||modal||S.done)return;
   if(/^\d$/.test(k)){
@@ -258,24 +301,13 @@ function press(k){
   }else if(k==='del'){S.current=S.current.slice(0,-1);drawCurrent()}
   else if(k==='enter')submit();
 }
-
-function hardCheck(g){
-  for(const prev of S.guesses){
-    const res=score(prev,S.code);
-    for(let i=0;i<LEN;i++)if(res.state[i]==='hit'&&g[i]!==prev[i])return `Hard mode: position ${i+1} must be ${prev[i]}`;
-    const need={};for(let i=0;i<LEN;i++)if(res.state[i]!=='miss')need[prev[i]]=(need[prev[i]]||0)+1;
-    for(const d in need){const have=[...g].filter(x=>x===d).length;if(have<need[d])return `Hard mode: guess must include ${need[d]>1?need[d]+'× ':'a '}${d}`}
-  }
-  return null;
-}
-
 function submit(){
   const row=$('board').children[S.guesses.length];
   if(S.current.length<LEN){shake(row);toast('Enter all 5 digits');return}
   const g=S.current;S.guesses.push(g);S.current='';
   const r=S.guesses.length-1,res=score(g,S.code);
   S.won=res.state.every(s=>s==='hit');S.done=S.won||S.guesses.length===MAX;
-  persist();if(S.done&&S.mode==='daily')record();
+  persist();if(S.done&&S.mode==='daily'){record();postScore()}
   busy=true;
   const tiles=row.children,step=RM?0:220;
   for(let i=0;i<LEN;i++){
@@ -284,48 +316,75 @@ function submit(){
   setTimeout(()=>{busy=false;drawKeys();if(S.done)finish(r)},RM?20:(LEN-1)*step+520);
 }
 function shake(row){row.classList.remove('shake');void row.offsetWidth;row.classList.add('shake')}
-
 function record(){
-  stats.played++;
+  stats.played++;stats.points+=pointsFor(S.won,S.guesses.length);
   if(S.won){stats.wins++;stats.streak=(stats.last===DAY-1)?stats.streak+1:1;stats.best=Math.max(stats.best,stats.streak);stats.dist[S.guesses.length-1]++}
   else stats.streak=0;
   stats.last=S.won?DAY:0;
   store.set('tally.stats',stats);
 }
-
 function finish(r){
   if(S.won){
     const words=['Genius','Brilliant','Sharp','Solid','Nice','Close one','Phew'];
     toast(`${words[r]}! +${POINTS[r]} points`);
     [...$('board').children[r].children].forEach((t,i)=>setTimeout(()=>t.classList.add('win'),i*90));
-    setTimeout(showResult,1500);
-  }else{toast('The code was '+S.code);setTimeout(showResult,1500)}
+  }else toast('The code was '+S.code);
+  setTimeout(showResult,1500);
 }
 
-let toastT;
-function toast(msg){const t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,1800)}
+/* ---------- Leaderboard data ---------- */
+async function loadPlayer(){
+  if(!user){player=null;return}
+  const ref=db.collection('players').doc(user.uid);
+  const snap=await ref.get();
+  if(snap.exists)player=snap.data();
+  else{
+    const name=(store.get('tally.pendingName')||user.email.split('@')[0]).slice(0,16);
+    player={name,total:0,played:0,wins:0,last:0};
+    await ref.set(player);
+  }
+}
+async function postScore(){
+  if(!user||!db||S.mode!=='daily'||!S.done||S.posted)return 'none';
+  try{
+    if(!player)await loadPlayer();
+    const sid=`${DAY}_${user.uid}`, sref=db.collection('scores').doc(sid);
+    const existing=await sref.get();
+    if(existing.exists){S.posted=true;persist();return 'already'}
+    const pts=pointsFor(S.won,S.guesses.length);
+    const next={name:player.name,total:player.total+pts,played:player.played+1,wins:player.wins+(S.won?1:0),last:DAY};
+    const batch=db.batch();
+    batch.set(sref,{uid:user.uid,name:player.name,day:DAY,guesses:S.guesses.length,won:S.won,points:pts,ts:firebase.firestore.FieldValue.serverTimestamp()});
+    batch.set(db.collection('players').doc(user.uid),next);
+    await batch.commit();
+    player=next;S.posted=true;persist();
+    return 'posted';
+  }catch(e){console.warn(e);return 'error'}
+}
 
+/* ---------- UI helpers ---------- */
+let toastT;
+function toast(msg){const t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,1900)}
 let tick;
 function openSheet(html,mount){
-  modal=true;$('sheet').innerHTML='<button class="close" aria-label="Close" data-close>✕</button>'+html;$('scrim').hidden=false;
-  if(mount)mount($('sheet'));$('sheet').querySelector('[data-close]').focus();
+  modal=true;clearInterval(tick);
+  $('sheet').innerHTML='<button class="close" aria-label="Close" data-close>✕</button>'+html;$('scrim').hidden=false;$('sheet').scrollTop=0;
+  if(mount)mount($('sheet'));
 }
 function closeSheet(){modal=false;$('scrim').hidden=true;clearInterval(tick)}
 $('scrim').addEventListener('click',e=>{if(e.target===$('scrim')||e.target.closest('[data-close]'))closeSheet()});
 
+/* ---------- Help ---------- */
 function exampleRow(){
   const g='36498',c='38516',res=score(g,c);
   return [...g].map((d,i)=>`<div class="tile ${res.state[i]}"><span class="d">${d}</span><span class="a">${res.arrow[i]}</span></div>`).join('');
 }
 function showHelp(){
-  const locked=S.guesses.length>0&&!S.done;
   openSheet(`<h2>How to play</h2>
   <ol class="rules">
-    <li>Crack the hidden 5-digit code in 7 guesses.</li>
-    <li>Points depend on how fast you crack it: 10, 8, 6, 4, 3, 2 or 1 point for guesses 1 to 7, and 0 if you miss.</li>
-    <li> Digits can repeat and the code can start with 0.</li>
-    <li>Each day you get one maths clue about the code, like "the 2nd and 4th digits multiply to 24". Work it out to make your first guess count.</li>
-    <li>After each guess, the tiles change colour. Grey and yellow tiles also show an arrow for that position.</li>
+    <li>Crack the hidden 5-digit code in 7 guesses. Digits can repeat and the code can start with 0.</li>
+    <li>Each day you get one maths clue, like "the 2nd and 4th digits multiply to 24". Work it out to make your first guess count.</li>
+    <li>After each guess the tiles change colour, and grey and yellow tiles show an arrow for that spot.</li>
   </ol>
   <div><div class="label" style="margin-bottom:8px">Example: the code is 38516</div><div class="ex">${exampleRow()}</div></div>
   <div class="legend">
@@ -333,48 +392,146 @@ function showHelp(){
     <div><b>6</b> is yellow: it's in the code but somewhere else. ▲ means the real digit in that spot is higher than 6.</div>
     <div><b>4</b> and <b>9</b> are grey: not in the code. The arrows still tell you if that spot is higher (▲) or lower (▼).</div>
   </div>
-  <p class="muted">A new code arrives at midnight. Use the refresh button for unlimited practice codes that don't affect your stats.</p>`);
+  <div><div class="label" style="margin-bottom:8px">Points for the leaderboard</div>
+  <div class="ptable"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>✕</span><b>10</b><b>8</b><b>6</b><b>4</b><b>3</b><b>2</b><b>1</b><b>0</b></div></div>
+  <p class="muted">A new code arrives at midnight. Sign in from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>`);
   prefs.seenHelp=true;store.set('tally.prefs',prefs);
 }
 
-function statsHTML(){
-  const pct=stats.played?Math.round(stats.wins/stats.played*100):0, mx=Math.max(1,...stats.dist);
-  const todayRow=S.mode==='daily'&&S.done&&S.won?S.guesses.length-1:-1;
-  return `<div class="nums"><div><b>${stats.played}</b><span>Played</span></div><div><b>${pct}</b><span>Win %</span></div><div><b>${stats.streak}</b><span>Streak</span></div><div><b>${stats.best}</b><span>Best</span></div></div>
-  <div><div class="label" style="margin-bottom:8px">Guess distribution</div><div class="dist">${stats.dist.map((n,i)=>`<div class="bar${i===todayRow?' today':''}"><span>${i+1}</span><i style="width:${Math.max(8,n/mx*100)}%">${n}</i></div>`).join('')}</div></div>`;
+/* ---------- Sign in ---------- */
+function signInHTML(){
+  return `<form class="form" id="signForm" novalidate>
+    <p class="muted">Pick a player name and password. New name? We'll create your account. Same name and password on any phone gets you back in.</p>
+    <div class="field"><label for="nm">Player name</label><input id="nm" autocomplete="username" maxlength="16" placeholder="e.g. Mathew"></div>
+    <div class="field"><label for="pw">Password (6+ characters)</label><input id="pw" type="password" autocomplete="current-password"></div>
+    <div class="err" id="signErr"></div>
+    <button class="btn primary" id="signBtn" type="submit">Sign in or join</button>
+  </form>`;
 }
-function showStats(){openSheet(`<h2>Statistics</h2>${statsHTML()}<p class="muted">Only daily codes count. Practice games are just for fun.</p>`)}
-
-function untilMidnight(){const n=new Date(),m=new Date(n);m.setHours(24,0,0,0);const s=Math.max(0,Math.floor((m-n)/1000));return [s/3600|0,(s%3600)/60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
-function shareText(){
-  const n=S.guesses.length,score6=S.won?n:'X';
-  const head=S.mode==='daily'?`Tally No. ${DAY} ${score6}/7 · ${S.won?POINTS[n-1]:0} pts`:`Tally practice ${score6}/7`;
-  const rows=S.guesses.map(g=>score(g,S.code).state.map(s=>s==='hit'?'🟩':s==='near'?'🟨':'⬜').join(''));
-  return [head,...rows].join('\n');
-}
-function showResult(){
-  const answer=[...S.code].map(d=>`<div class="tile ${S.won?'hit':'miss'}"><span class="d">${d}</span><span class="a"></span></div>`).join('');
-  const title=S.won?`Cracked in ${S.guesses.length} · ${POINTS[S.guesses.length-1]} pts`:'Out of guesses · 0 pts';
-  openSheet(`<h2>${title}</h2>
-  <div><div class="label" style="margin-bottom:8px">The code</div><div class="answer">${answer}</div></div>
-  ${S.mode==='daily'?statsHTML():''}
-  <div class="actions"><button class="btn primary" id="shareBtn">Copy result</button><button class="btn" id="practiceBtn">${S.mode==='daily'?'Practice code':'Play another'}</button></div>
-  <div id="copyArea"></div>
-  ${S.mode==='daily'?`<div class="next"><span class="label">Next code in</span><b id="cd">${untilMidnight()}</b></div>`:`<button class="btn" id="dailyBtn">Back to today's code</button>`}`,
-  sh=>{
-    sh.querySelector('#shareBtn').addEventListener('click',()=>{
-      const txt=shareText();
-      const fallback=()=>{const a=sh.querySelector('#copyArea');a.innerHTML='<p class="muted" style="margin-bottom:6px">Copy this text:</p><textarea class="copybox" id="copyText" readonly></textarea>';const ta=a.querySelector('textarea');ta.value=txt;ta.focus();ta.select()};
-      try{navigator.clipboard.writeText(txt).then(()=>toast('Result copied'),fallback)}catch(e){fallback()}
-    });
-    sh.querySelector('#practiceBtn').addEventListener('click',()=>{closeSheet();startPractice()});
-    const db=sh.querySelector('#dailyBtn');if(db)db.addEventListener('click',()=>{closeSheet();startDaily()});
-    if(S.mode==='daily')tick=setInterval(()=>{const c=$('cd');if(c)c.textContent=untilMidnight()},1000);
+function mountSignIn(sh,after){
+  const f=sh.querySelector('#signForm');if(!f)return;
+  f.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const name=sh.querySelector('#nm').value.trim(), pw=sh.querySelector('#pw').value, err=sh.querySelector('#signErr'), btn=sh.querySelector('#signBtn');
+    err.textContent='';
+    if(!auth){err.textContent='The leaderboard is offline right now. Try again later.';return}
+    if(slug(name).length<2){err.textContent='Use at least 2 letters or numbers in your name.';return}
+    if(pw.length<6){err.textContent='Password needs at least 6 characters.';return}
+    btn.disabled=true;btn.textContent='Checking…';
+    store.set('tally.pendingName',name);
+    try{
+      try{await auth.signInWithEmailAndPassword(emailFor(name),pw)}
+      catch(e1){
+        if(!['auth/invalid-credential','auth/user-not-found','auth/invalid-login-credentials'].includes(e1.code))throw e1;
+        try{await auth.createUserWithEmailAndPassword(emailFor(name),pw)}
+        catch(e2){if(e2.code==='auth/email-already-in-use')throw{code:'wrong-pw'};throw e2}
+      }
+      user=auth.currentUser;await loadPlayer();
+      const res=await postScore();
+      toast(res==='posted'?`Signed in. Today's score added`:`Signed in as ${player.name}`);
+      after&&after();
+    }catch(e){
+      console.warn(e);
+      err.textContent=e.code==='wrong-pw'?'That name is taken, or the password is wrong.':
+        e.code==='auth/too-many-requests'?'Too many tries. Wait a minute and try again.':
+        e.code==='auth/network-request-failed'?'No connection. Check your signal and try again.':
+        'Could not sign in. Try again.';
+      btn.disabled=false;btn.textContent='Sign in or join';
+    }
   });
 }
 
+/* ---------- Leaderboard ---------- */
+let lbTab='today';
+function showBoard(tab){
+  if(tab)lbTab=tab;
+  const tabs=`<div class="tabs" role="tablist">${[['today','Today'],['all','All time'],['me','My stats']].map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
+  const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><button class="link" id="signOut">Sign out</button></div>`:'';
+  openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>`,sh=>{
+    sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
+    const so=sh.querySelector('#signOut');if(so)so.addEventListener('click',async()=>{await auth.signOut();user=null;player=null;toast('Signed out');showBoard()});
+    fillBoard(sh.querySelector('#lbBody'));
+  });
+}
+async function fillBoard(el){
+  if(lbTab==='me'){el.innerHTML=myStatsHTML();return}
+  if(!db){el.innerHTML='<p class="muted">The leaderboard is offline right now.</p>';return}
+  let rows=[];
+  try{
+    if(lbTab==='today'){
+      const q=await db.collection('scores').where('day','==',DAY).get();
+      rows=q.docs.map(d=>d.data()).sort((a,b)=>b.points-a.points||a.guesses-b.guesses||(a.ts?.seconds||0)-(b.ts?.seconds||0))
+        .map(d=>({uid:d.uid,name:d.name,pts:d.points,meta:d.won?`${d.guesses}/7`:'X/7'}));
+    }else{
+      const q=await db.collection('players').orderBy('total','desc').limit(50).get();
+      rows=q.docs.map(d=>({uid:d.id,...d.data()})).filter(d=>d.played>0).map(d=>({uid:d.uid,name:d.name,pts:d.total,meta:`${d.played} played`}));
+    }
+  }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
+  let html='';
+  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted today's score yet. Be the first.":'No scores yet.'}</p>`;
+  else{
+    let pos=0,prev=null;
+    html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
+      return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
+  }
+  if(!user)html+=`<div class="label" style="margin-top:18px">Get on the board</div>`+signInHTML();
+  el.innerHTML=html;
+  mountSignIn(el,()=>showBoard());
+}
+function myStatsHTML(){
+  const pct=stats.played?Math.round(stats.wins/stats.played*100):0, mx=Math.max(1,...stats.dist);
+  const todayRow=S.mode==='daily'&&S.done&&S.won?S.guesses.length-1:-1;
+  const total=player?player.total:stats.points;
+  return `<div class="nums"><div><b>${total}</b><span>Points</span></div><div><b>${stats.played}</b><span>Played</span></div><div><b>${pct}</b><span>Win %</span></div><div><b>${stats.streak}</b><span>Streak</span></div></div>
+  <div><div class="label" style="margin-bottom:8px">Guess distribution</div><div class="dist">${stats.dist.map((n,i)=>`<div class="bar${i===todayRow?' today':''}"><span>${i+1}</span><i style="width:${Math.max(8,n/mx*100)}%">${n}</i></div>`).join('')}</div></div>
+  <p class="muted">Played, win % and streak are for this phone. Points ${player?'come from the leaderboard':'count once you sign in'}.</p>`;
+}
+
+/* ---------- Result ---------- */
+function untilMidnight(){const n=new Date(),m=new Date(n);m.setHours(24,0,0,0);const s=Math.max(0,Math.floor((m-n)/1000));return [s/3600|0,(s%3600)/60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
+function shareText(){
+  const n=S.guesses.length,sc=S.won?n:'X',pts=pointsFor(S.won,n);
+  const head=S.mode==='daily'?`Tally No. ${DAY}  ${sc}/7 · ${pts} pts`:`Tally practice ${sc}/7`;
+  const rows=S.guesses.map(g=>score(g,S.code).state.map(s=>s==='hit'?'🟩':s==='near'?'🟨':'⬜').join(''));
+  return [head,...rows,SITE].join('\n');
+}
+function showResult(){
+  const n=S.guesses.length,pts=pointsFor(S.won,n);
+  const answer=[...S.code].map(d=>`<div class="tile ${S.won?'hit':'miss'}"><span class="d">${d}</span><span class="a"></span></div>`).join('');
+  const title=S.won?`Cracked in ${n} · ${pts} pts`:'Out of guesses · 0 pts';
+  let lbNote='';
+  if(S.mode==='daily'){
+    lbNote=user&&S.posted?`<div class="note ok">Your ${pts} points are on today's leaderboard.</div>`:
+      user?`<div class="note">Saving to the leaderboard…</div>`:
+      `<div class="note">Sign in to put today's ${pts} points on the leaderboard.</div>${signInHTML()}`;
+  }
+  openSheet(`<h2>${title}</h2>
+  <div><div class="label" style="margin-bottom:8px">The code</div><div class="answer">${answer}</div></div>
+  ${lbNote}
+  <div class="actions"><button class="btn primary" id="shareBtn">Copy result</button>${S.mode==='daily'?'<button class="btn" id="lbBtn">Leaderboard</button>':''}</div>
+  <div id="copyArea"></div>
+  <div class="actions"><button class="btn" id="practiceBtn">${S.mode==='daily'?'Practice code':'Play another'}</button>${S.mode==='practice'?`<button class="btn" id="dailyBtn">Back to today's code</button>`:''}</div>
+  ${S.mode==='daily'?`<div class="next"><span class="label">Next code in</span><b id="cd">${untilMidnight()}</b></div>`:''}`,
+  sh=>{
+    sh.querySelector('#shareBtn').addEventListener('click',()=>{
+      const txt=shareText();
+      const fallback=()=>{const a=sh.querySelector('#copyArea');a.innerHTML='<p class="muted" style="margin-bottom:6px">Copy this text:</p><textarea class="copybox" readonly></textarea>';const ta=a.querySelector('textarea');ta.value=txt;ta.focus();ta.select()};
+      try{navigator.clipboard.writeText(txt).then(()=>toast('Result copied. Paste it on Facebook or WhatsApp'),fallback)}catch(e){fallback()}
+    });
+    const lb=sh.querySelector('#lbBtn');if(lb)lb.addEventListener('click',()=>showBoard('today'));
+    sh.querySelector('#practiceBtn').addEventListener('click',()=>{closeSheet();startPractice()});
+    const db2=sh.querySelector('#dailyBtn');if(db2)db2.addEventListener('click',()=>{closeSheet();startDaily()});
+    mountSignIn(sh,()=>showResult());
+    if(S.mode==='daily'){
+      tick=setInterval(()=>{const c=$('cd');if(c)c.textContent=untilMidnight()},1000);
+      if(user&&!S.posted)postScore().then(()=>{if(modal&&$('cd'))showResult()});
+    }
+  });
+}
+
+/* ---------- Wire up ---------- */
 $('btnHelp').addEventListener('click',showHelp);
-$('btnStats').addEventListener('click',()=>{S.done?showResult():showStats()});
+$('btnBoard').addEventListener('click',()=>showBoard());
 $('btnPractice').addEventListener('click',()=>{if(S.mode==='practice'&&!S.done&&S.guesses.length===0)return toast('Practice code ready');startPractice()});
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&modal){closeSheet();return}
@@ -385,10 +542,10 @@ document.addEventListener('keydown',e=>{
 });
 
 buildKeypad();startDaily();
+if(auth)auth.onAuthStateChanged(async u=>{user=u;if(u){try{await loadPlayer();await postScore()}catch(e){console.warn(e)}}else player=null});
 if(!prefs.seenHelp)setTimeout(showHelp,300);
 else if(S.done)setTimeout(showResult,400);
 })();
 </script>
-
 </body>
 </html>
