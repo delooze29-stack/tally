@@ -290,7 +290,7 @@ function startDaily(){
   S.elapsed=0;S.runFrom=0;S.secs=0;
   if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;
     /* A game started before the timer existed has guesses but no time: don't record a misleading time. */
-    if(saved.elapsed==null&&S.guesses.length)S.noTime=true}
+    if(saved.noTime||(saved.elapsed==null&&S.guesses.length))S.noTime=true}
   draw();
 }
 function startPractice(){
@@ -299,7 +299,7 @@ function startPractice(){
   draw();toast('Practice code ready');
 }
 function persist(){
-  if(S.mode==='daily')store.set('tally.day',{n:DAY,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs});
+  if(S.mode==='daily')store.set('tally.day',{n:DAY,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs,noTime:!!S.noTime});
   if(S.mode==='challenge')store.set('tally.chclock.'+S.ch.id,{elapsed:clockMs(),secs:S.secs});
 }
 
