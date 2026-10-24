@@ -10,7 +10,13 @@
 <meta name="author" content="Mathew Doughty">
 <meta name="copyright" content="© 2026 Mathew Doughty. All rights reserved.">
 <meta name="theme-color" content="#151a23">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2322915d'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='700' font-size='36' text-anchor='middle' fill='white'%3E7%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="icons/favicon-64.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tally">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@500;700&family=Big+Shoulders+Display:wght@800;900&family=Figtree:wght@400;600;700&display=swap">
@@ -127,6 +133,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:10px}
 .note{padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px;line-height:1.45}
 .note.ok{border-left:4px solid var(--hit)}
+.ico{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-4px;margin-right:8px}
+.inline-ico{width:18px;height:18px;margin:0 2px}
+[data-install]{display:flex;align-items:center;justify-content:center}
 .note.warn{border-left:4px solid var(--near)}
 .note.bad{border-left:4px solid var(--bad)}
 
@@ -503,7 +512,8 @@ function showHelp(){
   <div><div class="label" style="margin-bottom:8px">Points for the leaderboard</div>
   <div class="ptable"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>✕</span><b>10</b><b>8</b><b>6</b><b>4</b><b>3</b><b>2</b><b>1</b><b>0</b></div></div>
   <p class="muted">A new code arrives at midnight. Pick a nickname from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
-  <p class="muted" style="font-size:12px">Tally © 2026 Mathew Doughty. All rights reserved.</p>`);
+  ${installHTML()}
+  <p class="muted" style="font-size:12px">Tally © 2026 Mathew Doughty. All rights reserved.</p>`,mountInstall);
   prefs.seenHelp=true;store.set('tally.prefs',prefs);
 }
 
@@ -601,6 +611,45 @@ function mountSignIn(sh,after){
       btn.disabled=false;btn.textContent=mode==='new'?'Create player':'Sign in';
     }
   });
+}
+
+/* ---------- Add to home screen ----------
+   Android/Chrome: a real one-tap install.  iPhone: Apple doesn't allow that, so we show the steps. */
+let installEvt=null;
+const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e});
+window.addEventListener('appinstalled',()=>{installEvt=null;toast('Tally is on your home screen')});
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(e=>console.warn(e));
+function installHTML(){
+  if(isStandalone())return '';
+  return `<button class="btn" type="button" data-install>
+    <svg viewBox="0 0 24 24" aria-hidden="true" class="ico"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7M9 11l3 3 3-3"/></svg>Add Tally to your home screen</button>`;
+}
+function mountInstall(sh){
+  const b=sh.querySelector('[data-install]');if(!b)return;
+  b.addEventListener('click',async()=>{
+    if(installEvt){
+      installEvt.prompt();
+      try{const c=await installEvt.userChoice;if(c.outcome==='accepted')b.hidden=true}catch(e){}
+      installEvt=null;return;
+    }
+    showInstallSteps();
+  });
+}
+function showInstallSteps(){
+  const share=`<svg viewBox="0 0 24 24" class="ico inline-ico" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg>`;
+  const steps=isIOS()?
+    `<ol class="rules"><li>Open Tally in <strong>Safari</strong> (not inside Facebook or another app).</li>
+      <li>Tap the <strong>Share</strong> button ${share} at the bottom of the screen.</li>
+      <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+      <li>Tap <strong>Add</strong>. Tally appears with your other apps.</li></ol>`:
+    `<ol class="rules"><li>Open Tally in <strong>Chrome</strong> (not inside Facebook or another app).</li>
+      <li>Tap the <strong>⋮</strong> menu at the top right.</li>
+      <li>Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>.</li>
+      <li>Tap <strong>Install</strong> or <strong>Add</strong>.</li></ol>`;
+  openSheet(`<h2>Add to home screen</h2><p>Tally then opens full screen like an app, with its own icon.</p>${steps}
+    <p class="muted">Opened Tally from a Facebook link? Tap the ⋯ menu and choose <strong>Open in browser</strong> first.</p>`);
 }
 
 /* ---------- Fair play ----------
@@ -964,6 +1013,7 @@ function showResult(){
   ${lbNote}
   <div class="actions"><button class="btn primary" id="shareBtn">Copy result</button>${S.mode==='daily'?'<button class="btn" id="lbBtn">Leaderboard</button>':''}</div>
   <div id="copyArea"></div>
+  ${S.mode==='daily'?installHTML():''}
   <div class="actions"><button class="btn" id="practiceBtn">${S.mode==='daily'?'Practice code':'Play another'}</button>${S.mode==='practice'?`<button class="btn" id="dailyBtn">Back to today's code</button>`:''}</div>
   ${S.mode==='daily'?`<div class="next"><span class="label">Next code in</span><b id="cd">${untilMidnight()}</b></div>`:''}`,
   sh=>{
@@ -976,6 +1026,7 @@ function showResult(){
     sh.querySelector('#practiceBtn').addEventListener('click',()=>{closeSheet();startPractice()});
     const db2=sh.querySelector('#dailyBtn');if(db2)db2.addEventListener('click',()=>{closeSheet();startDaily()});
     mountSignIn(sh,()=>showResult());
+    mountInstall(sh);
     if(S.mode==='daily'&&user&&S.won&&S.guesses.length===1){
       const area=document.createElement('div');sh.querySelector('h2').after(area);
       (postP||Promise.resolve()).then(()=>loadLucky(true)).then(l=>{
