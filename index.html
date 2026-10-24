@@ -127,10 +127,13 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:10px}
 .note{padding:10px 12px;border-radius:10px;background:var(--bg);font-size:14px;line-height:1.45}
 .note.ok{border-left:4px solid var(--hit)}
+.note.warn{border-left:4px solid var(--near)}
+.note.bad{border-left:4px solid var(--bad)}
 
 /* sign-in + leaderboard */
-.form{display:grid;gap:10px}
-.field{display:grid;gap:4px}
+.form{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.form>*{min-width:0}
+.field{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
 .field label{font-size:13px;font-weight:600}
 .field input{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 12px;font:inherit;font-size:16px}
 .err{color:var(--bad);font-size:14px;font-weight:600;min-height:1em}
@@ -171,7 +174,8 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .cluebox{padding:12px;border-radius:10px;border:1px dashed var(--line);background:var(--bg);font-weight:600;line-height:1.4}
 .field input,.field select,.field textarea{width:100%;min-width:0}
 .inline input{width:auto}
-#chBody,#lbBody{display:grid;gap:14px;align-content:start}
+#chBody,#lbBody{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-content:start}
+#chBody>*,#lbBody>*{min-width:0}
 #chBody .label{margin-top:4px}
 .field select,.field textarea{border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px;font:inherit;font-size:16px}
 .field select{height:46px}
@@ -599,6 +603,33 @@ function mountSignIn(sh,after){
   });
 }
 
+/* ---------- Fair play ----------
+   Cracking the code first time is about a 1 in 5,000 chance. Twice in 7 days is about
+   1 in 25 million, three times about 1 in 125 billion. So:
+   1 first-guess win in 7 days: allowed, shown with a clover.
+   2: a warning.  3 or more: account on hold (hidden from the leaderboards).
+   To clear someone, add a document to the "clears" collection in Firebase with the
+   player's user ID as the document ID and a number field "day" set to today's code number.
+   First-guess wins on or before that day are then ignored. */
+const LUCKY_WARN=2, LUCKY_HOLD=3;
+let luckyCache=null, luckyAt=0;
+async function loadLucky(force){
+  if(!db)return {};
+  if(!force&&luckyCache&&Date.now()-luckyAt<20000)return luckyCache;
+  const [q,cl]=await Promise.all([
+    db.collection('scores').where('day','>=',DAY-6).get(),
+    db.collection('clears').get().catch(()=>({docs:[]}))
+  ]);
+  const cleared={};cl.docs.forEach(d=>cleared[d.id]=+d.data().day||0);
+  const lucky={};
+  q.docs.forEach(d=>{const x=d.data();if(x.won&&x.guesses===1&&x.day>(cleared[x.uid]||0))lucky[x.uid]=(lucky[x.uid]||0)+1});
+  luckyCache=lucky;luckyAt=Date.now();return lucky;
+}
+const isHeld=(lucky,uid)=>(lucky[uid]||0)>=LUCKY_HOLD;
+const HOLD_MSG=`<div class="note bad"><strong>Your account is on hold.</strong> You've cracked the code first time ${LUCKY_HOLD} times in 7 days, which is about a 1 in 125 billion chance. Your scores won't show on the leaderboards and you can't play challenges for now. If this is a mistake, contact the game's owner.</div>`;
+const WARN_MSG=`<div class="note warn"><strong>That's ${LUCKY_WARN} first-guess wins in 7 days.</strong> The odds of that are about 1 in 25 million. One more this week and your account goes on hold.</div>`;
+const LUCKY_MSG=`<div class="note ok">First-guess win 🍀 That's about a 1 in 5,000 chance. It shows with a clover on today's leaderboard.</div>`;
+
 /* ---------- Leaderboard ---------- */
 let lbTab='today';
 function showBoard(tab){
@@ -614,16 +645,19 @@ function showBoard(tab){
 async function fillBoard(el){
   if(lbTab==='me'){el.innerHTML=myStatsHTML();return}
   if(!db){el.innerHTML='<p class="muted">The leaderboard is offline right now.</p>';return}
-  let rows=[];
+  let rows=[], held=0;
   try{
     if(lbTab==='today'){
-      const q=await db.collection('scores').where('day','==',DAY).get();
+      const [q,lucky]=await Promise.all([db.collection('scores').where('day','==',DAY).get(),loadLucky(true).catch(()=>({}))]);
       const t=d=>d.secs||1e9;
-      rows=q.docs.map(d=>d.data()).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
-        .map(d=>({uid:d.uid,name:d.name,pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}));
+      held=q.docs.map(d=>d.data()).filter(d=>isHeld(lucky,d.uid)).length;
+      rows=q.docs.map(d=>d.data()).filter(d=>!isHeld(lucky,d.uid)).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
+        
+        .map(d=>({uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}));
     }else{
-      const [q,atts]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[])]);
-      rows=q.docs.map(d=>({uid:d.id,...d.data()}))
+      const [q,atts,lucky]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[]),loadLucky().catch(()=>({}))]);
+      held=q.docs.filter(d=>isHeld(lucky,d.id)).length;
+      rows=q.docs.map(d=>({uid:d.id,...d.data()})).filter(d=>!isHeld(lucky,d.uid))
         .map(d=>({uid:d.uid,name:d.name,played:d.played,pts:Math.max(0,d.total+chNet(d.uid,atts)),ch:atts.some(a=>a.uid===d.uid||a.setter===d.uid)}))
         .filter(d=>d.played>0||d.ch).sort((a,b)=>b.pts-a.pts).slice(0,50)
         .map(d=>({...d,meta:`${d.played} played`}));
@@ -636,6 +670,8 @@ async function fillBoard(el){
     html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
+  if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
+  if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
   if(!user)html+=`<div class="label" style="margin-top:18px">Get on the board</div>`+signInHTML();
   el.innerHTML=html;
   mountSignIn(el,()=>showBoard());
@@ -703,6 +739,8 @@ async function fillChallenges(el){
   try{
     if(!player)await loadPlayer();
     await loadAttempts(true);
+    const lucky=await loadLucky().catch(()=>({}));
+    if(isHeld(lucky,user.uid)){el.innerHTML=HOLD_MSG;return}
     if(chTab==='open')await fillOpen(el);
     else if(chTab==='set')fillSet(el);
     else await fillMine(el);
@@ -938,6 +976,12 @@ function showResult(){
     sh.querySelector('#practiceBtn').addEventListener('click',()=>{closeSheet();startPractice()});
     const db2=sh.querySelector('#dailyBtn');if(db2)db2.addEventListener('click',()=>{closeSheet();startDaily()});
     mountSignIn(sh,()=>showResult());
+    if(S.mode==='daily'&&user&&S.won&&S.guesses.length===1){
+      const area=document.createElement('div');sh.querySelector('h2').after(area);
+      (postP||Promise.resolve()).then(()=>loadLucky(true)).then(l=>{
+        const n=l[user.uid]||0;area.innerHTML=n>=LUCKY_HOLD?HOLD_MSG:n>=LUCKY_WARN?WARN_MSG:LUCKY_MSG;
+      }).catch(e=>console.warn(e));
+    }
     if(S.mode==='daily'){
       tick=setInterval(()=>{const c=$('cd');if(c)c.textContent=untilMidnight()},1000);
       if(user&&!S.posted)postScore().then(()=>{if(modal&&$('cd'))showResult()});

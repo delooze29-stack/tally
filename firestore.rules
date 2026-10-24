@@ -75,6 +75,12 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Clears for players put on hold by mistake. Only you can add these, in the Firebase console.
+    match /clears/{uid} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // ---------- Challenges ----------
     function chPath(id) { return /databases/$(database)/documents/challenges/$(id); }
     function attPath(id, uid) { return /databases/$(database)/documents/attempts/$(id + '_' + uid); }
