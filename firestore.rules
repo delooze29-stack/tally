@@ -41,6 +41,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Nicknames: one document per nickname, so each can only be claimed once.
+    match /names/{nameId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && nameId.size() >= 2 && nameId.size() <= 16;
+      allow update, delete: if false;
+    }
+
     match /scores/{scoreId} {
       allow read: if true;
 
