@@ -7,6 +7,8 @@
 <meta name="description" content="Tally: crack the daily 5-digit code in 7 guesses. Daily maths clue, points leaderboard.">
 <meta property="og:title" content="Tally">
 <meta property="og:description" content="Crack today's 5-digit code in 7 guesses. Can you beat my score?">
+<meta name="author" content="Mathew Doughty">
+<meta name="copyright" content="© 2026 Mathew Doughty. All rights reserved.">
 <meta name="theme-color" content="#151a23">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2322915d'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='700' font-size='36' text-anchor='middle' fill='white'%3E7%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -166,6 +168,7 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
+/* Tally © 2026 Mathew Doughty. All rights reserved. Not licensed for copying or reuse. */
 (function(){
 const SITE='delooze29-stack.github.io/tally';
 const MAX=7, LEN=5, POINTS=[10,8,6,4,3,2,1];
@@ -394,7 +397,8 @@ function showHelp(){
   </div>
   <div><div class="label" style="margin-bottom:8px">Points for the leaderboard</div>
   <div class="ptable"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>✕</span><b>10</b><b>8</b><b>6</b><b>4</b><b>3</b><b>2</b><b>1</b><b>0</b></div></div>
-  <p class="muted">A new code arrives at midnight. Sign in from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>`);
+  <p class="muted">A new code arrives at midnight. Sign in from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
+  <p class="muted" style="font-size:12px">Tally © 2026 Mathew Doughty. All rights reserved.</p>`);
   prefs.seenHelp=true;store.set('tally.prefs',prefs);
 }
 
