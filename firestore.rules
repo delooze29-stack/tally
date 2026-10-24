@@ -72,5 +72,95 @@ service cloud.firestore {
 
       allow update, delete: if false;
     }
+
+    // ---------- Challenges ----------
+    function chPath(id) { return /databases/$(database)/documents/challenges/$(id); }
+    function attPath(id, uid) { return /databases/$(database)/documents/attempts/$(id + '_' + uid); }
+    function playerPath(uid) { return /databases/$(database)/documents/players/$(uid); }
+
+    match /challenges/{cid} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['setter', 'setterName', 'c', 'clue', 'target', 'stake', 'created', 'expires', 'open', 'tries', 'cracks'])
+        && request.resource.data.setter == request.auth.uid
+        && request.resource.data.setterName == get(playerPath(request.auth.uid)).data.name
+        && request.resource.data.c is string && request.resource.data.c.size() == 7
+        && request.resource.data.clue is string
+        && request.resource.data.clue.size() >= 3 && request.resource.data.clue.size() <= 100
+        && request.resource.data.target is int
+        && request.resource.data.target >= 3 && request.resource.data.target <= 7
+        && request.resource.data.stake is int
+        && request.resource.data.stake >= 1 && request.resource.data.stake <= 10
+        && request.resource.data.created == request.time
+        && request.resource.data.expires is int
+        && request.resource.data.expires > request.time.toMillis()
+        && request.resource.data.expires <= request.time.toMillis() + 8 * 86400000
+        && request.resource.data.open == true
+        && request.resource.data.tries == 0
+        && request.resource.data.cracks == 0;
+
+      allow update: if request.auth != null && (
+        // The setter closes their own challenge.
+        (resource.data.setter == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open'])
+          && request.resource.data.open == false)
+        ||
+        // A player accepts: tries goes up by one, in the same write as their attempt.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tries'])
+          && request.resource.data.tries == resource.data.tries + 1
+          && !exists(attPath(cid, request.auth.uid))
+          && existsAfter(attPath(cid, request.auth.uid)))
+        ||
+        // A player cracks it: cracks goes up by one, in the same write as their winning attempt.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cracks'])
+          && request.resource.data.cracks == resource.data.cracks + 1
+          && get(attPath(cid, request.auth.uid)).data.status == 'playing'
+          && getAfter(attPath(cid, request.auth.uid)).data.won == true)
+      );
+
+      allow delete: if false;
+    }
+
+    match /attempts/{aid} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['ch', 'uid', 'name', 'setter', 'sname', 'stake', 'target', 'g', 'status', 'won', 'ts'])
+        && request.resource.data.uid == request.auth.uid
+        && aid == request.resource.data.ch + '_' + request.auth.uid
+        && get(chPath(request.resource.data.ch)).data.open == true
+        && get(chPath(request.resource.data.ch)).data.expires > request.time.toMillis()
+        && get(chPath(request.resource.data.ch)).data.setter != request.auth.uid
+        && request.resource.data.setter == get(chPath(request.resource.data.ch)).data.setter
+        && request.resource.data.sname == get(chPath(request.resource.data.ch)).data.setterName
+        && request.resource.data.stake == get(chPath(request.resource.data.ch)).data.stake
+        && request.resource.data.target == get(chPath(request.resource.data.ch)).data.target
+        && request.resource.data.name == get(playerPath(request.auth.uid)).data.name
+        && request.resource.data.g == []
+        && request.resource.data.status == 'playing'
+        && request.resource.data.won == false
+        && request.resource.data.ts == request.time
+        && getAfter(chPath(request.resource.data.ch)).data.tries == get(chPath(request.resource.data.ch)).data.tries + 1;
+
+      // Guesses are added while playing. Once it's done, it's locked.
+      allow update: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && resource.data.status == 'playing'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['g', 'status', 'won', 'ts'])
+        && request.resource.data.g is list
+        && request.resource.data.g.size() >= resource.data.g.size()
+        && request.resource.data.g.size() <= resource.data.target
+        && request.resource.data.status in ['playing', 'done']
+        && request.resource.data.ts == request.time
+        && (request.resource.data.status == 'playing'
+            || request.resource.data.won == true
+            || request.resource.data.g.size() == resource.data.target)
+        && (request.resource.data.won == false
+            || (request.resource.data.status == 'done'
+                && getAfter(chPath(resource.data.ch)).data.cracks == get(chPath(resource.data.ch)).data.cracks + 1));
+
+      allow delete: if false;
+    }
   }
 }

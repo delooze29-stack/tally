@@ -147,6 +147,30 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .inline{display:flex;gap:8px}
 .inline input{flex:1;min-width:0}
 .btn.small{flex:0 0 auto;min-height:46px}
+.ch-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.ch{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:6px}
+.ch.focus{border-color:var(--near);box-shadow:0 0 0 2px var(--near)}
+.ch-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ch-top strong{font-size:16px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stake{font-family:var(--mono);font-weight:700;font-size:15px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.stake.good,.chip.good{color:var(--hit)}.stake.bad,.chip.bad{color:var(--bad)}
+.ch-meta{font-size:13px;color:var(--muted)}
+.ch-clue{font-weight:600}
+.ch-act{display:flex;gap:8px;flex-wrap:wrap}
+.ch-act .btn{flex:0 0 auto}
+.ch-confirm{display:grid;gap:8px;padding-top:8px;border-top:1px dashed var(--line);line-height:1.45}
+.chip{font-weight:700;font-size:14px;font-family:var(--mono)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid2>*{min-width:0}
+.field input,.field select,.field textarea{width:100%;min-width:0}
+.inline input{width:auto}
+#chBody,#lbBody{display:grid;gap:14px;align-content:start}
+#chBody .label{margin-top:4px}
+.field select,.field textarea{border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px;font:inherit;font-size:16px}
+.field select{height:46px}
+.field textarea{padding:10px;resize:vertical;min-height:64px}
+.codein{font-family:var(--mono);font-size:24px!important;letter-spacing:.3em}
+.nums.two{grid-template-columns:1fr 1fr}
 .ok-msg{color:var(--hit);font-size:14px;font-weight:600}
 .check{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600}
 .check input{width:20px;height:20px;accent-color:var(--hit)}
@@ -161,6 +185,7 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
     <nav class="tools">
       <button class="icon" id="btnHelp" aria-label="How to play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.3-2.7 4"/><path d="M12 17.6v.1"/></svg></button>
       <button class="icon" id="btnBoard" aria-label="Leaderboard"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/></svg></button>
+      <button class="icon" id="btnChallenge" aria-label="Challenges"><svg viewBox="0 0 24 24"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5M5 14l4 4M7 17l-3 3M3 19l2 2"/></svg></button>
       <button class="icon" id="btnPractice" aria-label="Practice with a random code"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/></svg></button>
     </nav>
   </header>
@@ -250,13 +275,13 @@ let S, busy=false, modal=false;
 
 function startDaily(){
   const p=puzzle(DAY*7919+13), saved=store.get('tally.day');
-  S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,posted:false};
+  S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,posted:false,max:MAX};
   if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted}
   draw();
 }
 function startPractice(){
   const p=puzzle(Math.floor(Math.random()*1e9));
-  S={mode:'practice',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false};
+  S={mode:'practice',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,max:MAX};
   draw();toast('Practice code ready');
 }
 function persist(){if(S.mode==='daily')store.set('tally.day',{n:DAY,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted})}
@@ -264,12 +289,12 @@ function persist(){if(S.mode==='daily')store.set('tally.day',{n:DAY,guesses:S.gu
 /* ---------- Board ---------- */
 function draw(){
   const date=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
-  $('sub').textContent=S.mode==='daily'?`No. ${DAY} · ${date}`:'Practice · not counted';
-  $('clue').classList.toggle('practice',S.mode==='practice');
-  $('clueLabel').textContent=S.mode==='daily'?"Today's clue":'Practice clue';
+  $('sub').textContent=S.mode==='daily'?`No. ${DAY} · ${date}`:S.mode==='challenge'?`Crack in ${S.max} · ${S.ch.stake} pts`:'Practice · not counted';
+  $('clue').classList.toggle('practice',S.mode!=='daily');
+  $('clueLabel').textContent=S.mode==='daily'?"Today's clue":S.mode==='challenge'?`${S.ch.setterName}'s clue`:'Practice clue';
   $('clueText').textContent=S.clue;
   const b=$('board');b.innerHTML='';
-  for(let r=0;r<MAX;r++){
+  for(let r=0;r<S.max;r++){
     const row=document.createElement('div');row.className='row';
     for(let i=0;i<LEN;i++){const t=document.createElement('div');t.className='tile';t.innerHTML='<span class="d"></span><span class="a"></span>';row.appendChild(t)}
     b.appendChild(row);
@@ -286,7 +311,7 @@ function setTile(t,d,state,arrow){
   t.setAttribute('aria-label',`${d}, ${state==='hit'?'correct':state==='near'?'wrong place':'not in code'}${arrow?', real digit is '+(arrow==='▲'?'higher':'lower'):''}`);
 }
 function drawCurrent(){
-  if(S.done)return;const r=S.guesses.length;if(r>=MAX)return;
+  if(S.done)return;const r=S.guesses.length;if(r>=S.max)return;
   const tiles=$('board').children[r].children;
   for(let i=0;i<LEN;i++){const d=S.current[i]||'';tiles[i].className='tile'+(d?' typed':'');tiles[i].querySelector('.d').textContent=d;tiles[i].querySelector('.a').textContent=''}
 }
@@ -316,8 +341,9 @@ function submit(){
   if(S.current.length<LEN){shake(row);toast('Enter all 5 digits');return}
   const g=S.current;S.guesses.push(g);S.current='';
   const r=S.guesses.length-1,res=score(g,S.code);
-  S.won=res.state.every(s=>s==='hit');S.done=S.won||S.guesses.length===MAX;
+  S.won=res.state.every(s=>s==='hit');S.done=S.won||S.guesses.length===S.max;
   persist();if(S.done&&S.mode==='daily'){record();postScore()}
+  if(S.mode==='challenge'&&user)saveAttempt();
   busy=true;
   const tiles=row.children,step=RM?0:220;
   for(let i=0;i<LEN;i++){
@@ -336,11 +362,12 @@ function record(){
 function finish(r){
   if(S.won){
     const words=['Genius','Brilliant','Sharp','Solid','Nice','Close one','Phew'];
-    toast(`${words[r]}! +${POINTS[r]} points`);
+    toast(S.mode==='challenge'?`Cracked it! +${S.ch.stake} pts`:`${words[r]}! +${POINTS[r]} points`);
     [...$('board').children[r].children].forEach((t,i)=>setTimeout(()=>t.classList.add('win'),i*90));
   }else toast('The code was '+S.code);
   setTimeout(showResult,1500);
 }
+
 
 /* ---------- Leaderboard data ---------- */
 async function loadPlayer(){
@@ -409,6 +436,7 @@ function showHelp(){
     <li>Crack the hidden 5-digit code in 7 guesses. Digits can repeat and the code can start with 0.</li>
     <li>Each day you get one maths clue, like "the 2nd and 4th digits multiply to 24". Work it out to make your first guess count.</li>
     <li>After each guess the tiles change colour, and grey and yellow tiles show an arrow for that spot.</li>
+    <li>Tap the crossed swords to set your own code as a challenge, or take on someone else's. Points are staked, so the winner takes them.</li>
   </ol>
   <div><div class="label" style="margin-bottom:8px">Example: the code is 38516</div><div class="ex">${exampleRow()}</div></div>
   <div class="legend">
@@ -536,8 +564,11 @@ async function fillBoard(el){
       rows=q.docs.map(d=>d.data()).sort((a,b)=>b.points-a.points||a.guesses-b.guesses||(a.ts?.seconds||0)-(b.ts?.seconds||0))
         .map(d=>({uid:d.uid,name:d.name,pts:d.points,meta:d.won?`${d.guesses}/7`:'X/7'}));
     }else{
-      const q=await db.collection('players').orderBy('total','desc').limit(50).get();
-      rows=q.docs.map(d=>({uid:d.id,...d.data()})).filter(d=>d.played>0).map(d=>({uid:d.uid,name:d.name,pts:d.total,meta:`${d.played} played`}));
+      const [q,atts]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[])]);
+      rows=q.docs.map(d=>({uid:d.id,...d.data()}))
+        .map(d=>({uid:d.uid,name:d.name,played:d.played,pts:Math.max(0,d.total+chNet(d.uid,atts)),ch:atts.some(a=>a.uid===d.uid||a.setter===d.uid)}))
+        .filter(d=>d.played>0||d.ch).sort((a,b)=>b.pts-a.pts).slice(0,50)
+        .map(d=>({...d,meta:`${d.played} played`}));
     }
   }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
   let html='';
@@ -554,21 +585,259 @@ async function fillBoard(el){
 function myStatsHTML(){
   const pct=stats.played?Math.round(stats.wins/stats.played*100):0, mx=Math.max(1,...stats.dist);
   const todayRow=S.mode==='daily'&&S.done&&S.won?S.guesses.length-1:-1;
-  const total=player?player.total:stats.points;
+  const total=player?myPoints():stats.points;
   return `<div class="nums"><div><b>${total}</b><span>Points</span></div><div><b>${stats.played}</b><span>Played</span></div><div><b>${pct}</b><span>Win %</span></div><div><b>${stats.streak}</b><span>Streak</span></div></div>
   <div><div class="label" style="margin-bottom:8px">Guess distribution</div><div class="dist">${stats.dist.map((n,i)=>`<div class="bar${i===todayRow?' today':''}"><span>${i+1}</span><i style="width:${Math.max(8,n/mx*100)}%">${n}</i></div>`).join('')}</div></div>
-  <p class="muted">Played, win % and streak are for this phone. Points ${player?'come from the leaderboard':'count once you sign in'}.</p>`;
+  <p class="muted">Played, win % and streak are for this phone. Points ${player?'come from the leaderboard and include challenge wins and losses':'count once you sign in'}.</p>`;
+}
+
+/* ---------- Challenges ---------- */
+/* Free version: the code is scrambled, not secret. Fine among friends; a server check would make it cheat-proof. */
+const CH_MAX_OPEN=3, CH_DAYS=7, CH_MIN_TARGET=3;
+const FV=()=>firebase.firestore.FieldValue;
+function chKey(id){let h=2166136261;for(const c of id)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
+function encCode(code,id){const r=rng(chKey(id));return 't1'+[...code].map(d=>(+d+Math.floor(r()*10))%10).join('')}
+function decCode(c,id){const r=rng(chKey(id));return [...c.slice(2)].map(d=>(+d-Math.floor(r()*10)+10)%10).join('')}
+
+let attemptsCache=null, attemptsAt=0;
+async function loadAttempts(force){
+  if(!db)return [];
+  if(!force&&attemptsCache&&Date.now()-attemptsAt<20000)return attemptsCache;
+  const q=await db.collection('attempts').get();
+  attemptsCache=q.docs.map(d=>({id:d.id,...d.data()}));attemptsAt=Date.now();
+  return attemptsCache;
+}
+/* An attempt that's still being played counts as a loss until it's won. */
+function attemptDelta(a,uid){
+  if(!uid)return 0;
+  if(a.uid===uid)return a.won?a.stake:-a.stake;
+  if(a.setter===uid)return a.won?-a.stake:a.stake;
+  return 0;
+}
+function chNet(uid,atts){return (atts||[]).reduce((s,a)=>s+attemptDelta(a,uid),0)}
+function myPoints(){return Math.max(0,(player?player.total:0)+chNet(user&&user.uid,attemptsCache))}
+const signed=n=>(n>0?'+':n<0?'−':'')+Math.abs(n);
+function timeLeft(ms){const h=Math.max(0,Math.round((ms-Date.now())/36e5));return h>=48?`${Math.round(h/24)} days left`:h>=1?`${h}h left`:'ending soon'}
+
+let chTab='open', chFocus=null, authReadyResolve, authReady=new Promise(r=>authReadyResolve=r);
+setTimeout(()=>authReadyResolve&&authReadyResolve(),3000);
+
+function showChallenges(tab){
+  if(tab)chTab=tab;
+  const tabs=`<div class="tabs" role="tablist">${[['open','Open'],['set','Set one'],['mine','Mine']].map(([k,l])=>`<button role="tab" data-ctab="${k}" aria-selected="${chTab===k}">${l}</button>`).join('')}</div>`;
+  openSheet(`<h2>Challenges</h2>${tabs}<div id="chBody"><p class="muted">Loading…</p></div>`,sh=>{
+    sh.querySelectorAll('[data-ctab]').forEach(b=>b.addEventListener('click',()=>{chFocus=null;showChallenges(b.dataset.ctab)}));
+    fillChallenges(sh.querySelector('#chBody'));
+  });
+}
+
+async function fillChallenges(el){
+  if(!db){el.innerHTML='<p class="muted">Challenges are offline right now.</p>';return}
+  await authReady;
+  if(!user){
+    el.innerHTML=`<p>Set a code for others to crack, or take on someone else's. Points change hands, so pick a nickname first.</p>`+signInHTML();
+    mountSignIn(el,()=>showChallenges());return;
+  }
+  try{
+    if(!player)await loadPlayer();
+    await loadAttempts(true);
+    if(chTab==='open')await fillOpen(el);
+    else if(chTab==='set')fillSet(el);
+    else await fillMine(el);
+  }catch(e){console.warn(e);el.innerHTML=`<p class="muted">${e.code==='permission-denied'?'Challenges are blocked by the database rules. The game owner needs to update them.':'Could not load challenges. Check your connection.'}</p>`}
+}
+
+function chRow(c,mineAtt){
+  let action='';
+  if(mineAtt){
+    action=mineAtt.status==='playing'?`<button class="btn primary small" data-resume="${c.id}">Resume</button>`:
+      mineAtt.won?`<span class="chip good">Cracked it ${signed(c.stake)}</span>`:`<span class="chip bad">Beaten ${signed(-c.stake)}</span>`;
+  }else action=`<button class="btn primary small" data-accept="${c.id}">Take it on</button>`;
+  return `<li class="ch${chFocus===c.id?' focus':''}" id="ch-${c.id}">
+    <div class="ch-top"><strong>${esc(c.setterName)}</strong><span class="stake">${c.stake} pts</span></div>
+    <div class="ch-meta">Crack it in ${c.target} · ${c.tries} tried · ${c.cracks} cracked · ${timeLeft(c.expires)}</div>
+    <div class="ch-clue">“${esc(c.clue)}”</div>
+    <div class="ch-act">${action}</div>
+    <div class="ch-confirm" hidden></div>
+  </li>`;
+}
+
+async function fillOpen(el){
+  const q=await db.collection('challenges').where('open','==',true).get();
+  const now=Date.now();
+  let list=q.docs.map(d=>({id:d.id,...d.data()})).filter(c=>c.expires>now&&c.setter!==user.uid)
+    .sort((a,b)=>(b.created?.seconds||0)-(a.created?.seconds||0));
+  let focusNote='';
+  if(chFocus){
+    const f=list.find(c=>c.id===chFocus);
+    if(f)list=[f,...list.filter(c=>c!==f)];
+    else{
+      const snap=await db.collection('challenges').doc(chFocus).get();
+      focusNote=!snap.exists?`<div class="note">That challenge link doesn't work any more.</div>`:
+        snap.data().setter===user.uid?`<div class="note">That's your own challenge. Share the link so others can try it.</div>`:
+        `<div class="note">That challenge has closed. Here are the open ones.</div>`;
+    }
+  }
+  const myAtt=id=>attemptsCache.find(a=>a.ch===id&&a.uid===user.uid);
+  const pts=myPoints();
+  el.innerHTML=`${focusNote}<p class="muted">You have <strong>${pts} pts</strong> to play with. Crack a code within the target to take the stake. Miss, and the setter takes it from you.</p>`+
+    (list.length?`<ul class="ch-list">${list.map(c=>chRow(c,myAtt(c.id))).join('')}</ul>`:
+      `<p class="muted">No open challenges right now. Set one and share the link.</p><button class="btn primary" id="goSet">Set a challenge</button>`);
+  const gs=el.querySelector('#goSet');if(gs)gs.addEventListener('click',()=>showChallenges('set'));
+  el.querySelectorAll('[data-accept]').forEach(b=>b.addEventListener('click',()=>{
+    const c=list.find(x=>x.id===b.dataset.accept), box=b.closest('.ch').querySelector('.ch-confirm');
+    if(myPoints()<c.stake){box.innerHTML=`<p class="err">You need ${c.stake} pts to take this on. Play today's code to earn some.</p>`;box.hidden=false;return}
+    box.innerHTML=`<p>You're putting <strong>${c.stake} pts</strong> on the line. Crack it in ${c.target} or fewer to win ${c.stake} from ${esc(c.setterName)}. If you start and stop, it counts as a miss.</p>
+      <div class="actions"><button class="btn primary" data-go>Accept and play</button><button class="btn" data-cancel>Cancel</button></div><p class="err"></p>`;
+    box.hidden=false;
+    box.querySelector('[data-cancel]').addEventListener('click',()=>{box.hidden=true});
+    box.querySelector('[data-go]').addEventListener('click',async e=>{
+      e.target.disabled=true;e.target.textContent='Starting…';
+      try{await acceptChallenge(c)}catch(err){console.warn(err);box.querySelector('.err').textContent='Could not start it. It may have just closed. Try again.';e.target.disabled=false;e.target.textContent='Accept and play'}
+    });
+  }));
+  el.querySelectorAll('[data-resume]').forEach(b=>b.addEventListener('click',()=>{
+    const c=list.find(x=>x.id===b.dataset.resume);startChallenge(c,myAtt(c.id));
+  }));
+  if(chFocus){const f=el.querySelector('#ch-'+chFocus);if(f)f.scrollIntoView({block:'nearest'});chFocus=null}
+}
+
+async function acceptChallenge(c){
+  const aref=db.collection('attempts').doc(c.id+'_'+user.uid), cref=db.collection('challenges').doc(c.id);
+  const att={ch:c.id,uid:user.uid,name:player.name,setter:c.setter,sname:c.setterName,stake:c.stake,target:c.target,g:[],status:'playing',won:false,ts:FV().serverTimestamp()};
+  const b=db.batch();b.set(aref,att);b.update(cref,{tries:FV().increment(1)});
+  await b.commit();
+  attemptsAt=0;
+  startChallenge({...c,tries:c.tries+1},att);
+}
+function startChallenge(c,att){
+  S={mode:'challenge',ch:c,code:decCode(c.c,c.id),clue:c.clue,guesses:(att&&att.g)||[],current:'',
+     done:!!att&&att.status==='done',won:!!att&&!!att.won,max:c.target};
+  closeSheet();draw();
+  if(S.done)showResult();else toast(`Crack ${c.setterName}'s code in ${c.target}`);
+}
+let saveQ=Promise.resolve();
+function saveAttempt(){
+  const snap={g:S.guesses.slice(),status:S.done?'done':'playing',won:S.won}, c=S.ch;
+  saveQ=saveQ.then(async()=>{
+    const aref=db.collection('attempts').doc(c.id+'_'+user.uid);
+    const data={...snap,ts:FV().serverTimestamp()};
+    try{
+      if(snap.won){const b=db.batch();b.update(aref,data);b.update(db.collection('challenges').doc(c.id),{cracks:FV().increment(1)});await b.commit()}
+      else await aref.update(data);
+      attemptsAt=0;
+    }catch(e){console.warn(e);toast("Couldn't save that guess. Check your connection.")}
+  });
+}
+
+function fillSet(el){
+  const pts=myPoints();
+  const myOpen=0;
+  if(pts<1){el.innerHTML=`<p>You need some points to stake before you can set a challenge.</p><p class="muted">Play today's code to earn up to 10 points, then come back.</p>`;return}
+  const maxStake=Math.min(10,pts);
+  el.innerHTML=`<form class="form" id="chForm" novalidate>
+    <p class="muted">Choose a code for others to crack. If they crack it within your target, they take your stake. If not, you take theirs. You have <strong>${pts} pts</strong>.</p>
+    <div class="field"><label for="chCode">Your 5-digit code</label><input id="chCode" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="e.g. 40719" class="codein"></div>
+    <div class="grid2">
+      <div class="field"><label for="chTarget">Crack it in</label><select id="chTarget">${[3,4,5,6,7].map(n=>`<option value="${n}"${n===4?' selected':''}>${n} guesses</option>`).join('')}</select></div>
+      <div class="field"><label for="chStake">Stake</label><select id="chStake">${Array.from({length:maxStake},(_,i)=>i+1).map(n=>`<option value="${n}"${n===Math.min(5,maxStake)?' selected':''}>${n} pts</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label for="chClue">Clue for players</label><textarea id="chClue" maxlength="100" rows="2" placeholder="Type your code first and a maths clue appears here"></textarea>
+      <button class="link" type="button" id="newClue">Give me a different maths clue</button></div>
+    <div class="err" id="chErr"></div>
+    <button class="btn primary" type="submit" id="chMake">Set challenge</button>
+  </form><div id="chDone"></div>`;
+  const code=el.querySelector('#chCode'), clue=el.querySelector('#chClue'), err=el.querySelector('#chErr');
+  let auto=true, seed=Math.floor(Math.random()*1e9);
+  const autoClue=()=>{if(/^\d{5}$/.test(code.value)&&auto)clue.value=mathsClue([...code.value].map(Number),rng(seed))};
+  code.addEventListener('input',()=>{code.value=code.value.replace(/\D/g,'').slice(0,5);autoClue()});
+  clue.addEventListener('input',()=>{auto=clue.value.trim()===''});
+  el.querySelector('#newClue').addEventListener('click',()=>{if(!/^\d{5}$/.test(code.value)){err.textContent='Type your 5-digit code first.';return}err.textContent='';auto=true;seed++;autoClue()});
+  el.querySelector('#chForm').addEventListener('submit',async e=>{
+    e.preventDefault();err.textContent='';
+    const c=code.value, t=+el.querySelector('#chTarget').value, s=+el.querySelector('#chStake').value, cl=clue.value.trim();
+    if(!/^\d{5}$/.test(c)){err.textContent='Your code needs exactly 5 digits.';return}
+    if(cl.length<3){err.textContent='Add a clue so players have something to go on.';return}
+    if(cl.includes(c)){err.textContent="Your clue gives the code away. Try a maths clue instead.";return}
+    const btn=el.querySelector('#chMake');btn.disabled=true;btn.textContent='Setting…';
+    try{
+      const mine=await db.collection('challenges').where('setter','==',user.uid).get();
+      const open=mine.docs.filter(d=>d.data().open&&d.data().expires>Date.now()).length;
+      if(open>=CH_MAX_OPEN){err.textContent=`You already have ${CH_MAX_OPEN} challenges open. Close one under Mine first.`;btn.disabled=false;btn.textContent='Set challenge';return}
+      const ref=db.collection('challenges').doc();
+      await ref.set({setter:user.uid,setterName:player.name,c:encCode(c,ref.id),clue:cl,target:t,stake:s,
+        created:FV().serverTimestamp(),expires:Date.now()+CH_DAYS*864e5,open:true,tries:0,cracks:0});
+      el.querySelector('#chForm').hidden=true;
+      shareChallengeBox(el.querySelector('#chDone'),{id:ref.id,target:t,stake:s},true);
+    }catch(x){console.warn(x);err.textContent=x.code==='permission-denied'?'Blocked by the database rules. The game owner needs to update them.':'Could not set it. Check your connection.';btn.disabled=false;btn.textContent='Set challenge'}
+  });
+}
+function challengeLink(id){return `https://${SITE}/#c${id}`}
+function shareChallengeBox(box,c,fresh){
+  const txt=`Can you crack my Tally code in ${c.target} guesses? ${c.stake} points on the line 👀\n${challengeLink(c.id)}`;
+  box.innerHTML=`${fresh?`<div class="note ok">Challenge set. It stays open for ${CH_DAYS} days.</div>`:''}
+    <div class="actions"><button class="btn primary" data-copy>Copy challenge link</button>${fresh?'<button class="btn" data-mine>See my challenges</button>':''}</div><div data-area></div>`;
+  box.querySelector('[data-copy]').addEventListener('click',()=>copyText(txt,box.querySelector('[data-area]'),'Link copied. Paste it on Facebook or WhatsApp'));
+  const m=box.querySelector('[data-mine]');if(m)m.addEventListener('click',()=>showChallenges('mine'));
+}
+
+async function fillMine(el){
+  const q=await db.collection('challenges').where('setter','==',user.uid).get();
+  const mine=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.created?.seconds||0)-(a.created?.seconds||0));
+  const taken=attemptsCache.filter(a=>a.uid===user.uid).sort((a,b)=>(b.ts?.seconds||0)-(a.ts?.seconds||0));
+  const net=chNet(user.uid,attemptsCache), now=Date.now();
+  const setRows=mine.map(c=>{
+    const live=c.open&&c.expires>now;
+    const cNet=attemptsCache.filter(a=>a.ch===c.id).reduce((s,a)=>s+attemptDelta(a,user.uid),0);
+    return `<li class="ch"><div class="ch-top"><strong>Code ${decCode(c.c,c.id)}</strong><span class="stake ${cNet>0?'good':cNet<0?'bad':''}">${signed(cNet)} pts</span></div>
+      <div class="ch-meta">Crack it in ${c.target} · stake ${c.stake} · ${c.tries} tried · ${c.cracks} cracked · ${live?timeLeft(c.expires):'closed'}</div>
+      <div class="ch-clue">“${esc(c.clue)}”</div>
+      ${live?`<div class="ch-act"><button class="btn small" data-share="${c.id}">Copy link</button><button class="btn small" data-close-ch="${c.id}">Close it</button></div><div data-sharebox="${c.id}"></div>`:''}
+    </li>`}).join('');
+  const takeRows=taken.map(a=>`<li class="ch"><div class="ch-top"><strong>${esc(a.sname||'A player')}'s code</strong><span class="stake ${a.won?'good':'bad'}">${a.status==='playing'?'in play':signed(a.won?a.stake:-a.stake)+' pts'}</span></div>
+      <div class="ch-meta">Target ${a.target} · ${a.won?`cracked in ${a.g.length}`:a.status==='playing'?`${a.g.length} guesses so far`:'not cracked'}</div></li>`).join('');
+  el.innerHTML=`<div class="nums two"><div><b>${signed(net)}</b><span>Challenge pts</span></div><div><b>${myPoints()}</b><span>Your total</span></div></div>
+    <div class="label">Challenges you set</div>${setRows?`<ul class="ch-list">${setRows}</ul>`:'<p class="muted">None yet.</p>'}
+    <div class="label">Challenges you took on</div>${takeRows?`<ul class="ch-list">${takeRows}</ul>`:'<p class="muted">None yet.</p>'}`;
+  el.querySelectorAll('[data-share]').forEach(b=>b.addEventListener('click',()=>{const c=mine.find(x=>x.id===b.dataset.share);shareChallengeBox(el.querySelector(`[data-sharebox="${c.id}"]`),c,false);el.querySelector(`[data-sharebox="${c.id}"] [data-copy]`).click()}));
+  el.querySelectorAll('[data-close-ch]').forEach(b=>b.addEventListener('click',async()=>{
+    if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Tap again to close';return}
+    b.disabled=true;
+    try{await db.collection('challenges').doc(b.dataset.closeCh).update({open:false});toast('Challenge closed');fillChallenges(el)}
+    catch(e){console.warn(e);toast('Could not close it. Try again.');b.disabled=false}
+  }));
+}
+
+function showChallengeResult(){
+  const c=S.ch, n=S.guesses.length;
+  const answer=[...S.code].map(d=>`<div class="tile ${S.won?'hit':'miss'}"><span class="d">${d}</span><span class="a"></span></div>`).join('');
+  openSheet(`<h2>${S.won?`Cracked it in ${n}`:'Not this time'}</h2>
+    <div><div class="label" style="margin-bottom:8px">${esc(c.setterName)}'s code</div><div class="answer">${answer}</div></div>
+    <div class="note ${S.won?'ok':''}">${S.won?`You win ${c.stake} pts from ${esc(c.setterName)}.`:`${esc(c.setterName)} takes ${c.stake} pts from you.`}</div>
+    <div class="actions"><button class="btn primary" id="shareBtn">Copy result</button><button class="btn" id="moreCh">More challenges</button></div>
+    <div id="copyArea"></div>
+    <div class="actions"><button class="btn" id="dailyBtn">Back to today's code</button></div>`,sh=>{
+    sh.querySelector('#shareBtn').addEventListener('click',()=>copyText(shareText(),sh.querySelector('#copyArea'),'Result copied'));
+    sh.querySelector('#moreCh').addEventListener('click',()=>showChallenges('open'));
+    sh.querySelector('#dailyBtn').addEventListener('click',()=>{closeSheet();startDaily()});
+  });
+}
+function copyText(txt,area,msg){
+  const fallback=()=>{area.innerHTML='<p class="muted" style="margin-bottom:6px">Copy this text:</p><textarea class="copybox" readonly></textarea>';const ta=area.querySelector('textarea');ta.value=txt;ta.focus();ta.select()};
+  try{navigator.clipboard.writeText(txt).then(()=>toast(msg),fallback)}catch(e){fallback()}
 }
 
 /* ---------- Result ---------- */
 function untilMidnight(){const n=new Date(),m=new Date(n);m.setHours(24,0,0,0);const s=Math.max(0,Math.floor((m-n)/1000));return [s/3600|0,(s%3600)/60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
 function shareText(){
   const n=S.guesses.length,sc=S.won?n:'X',pts=pointsFor(S.won,n);
-  const head=S.mode==='daily'?`Tally No. ${DAY}  ${sc}/7 · ${pts} pts`:`Tally practice ${sc}/7`;
+  const head=S.mode==='daily'?`Tally No. ${DAY}  ${sc}/7 · ${pts} pts`:
+    S.mode==='challenge'?(S.won?`I cracked ${S.ch.setterName}'s Tally challenge in ${n}/${S.max} (+${S.ch.stake} pts)`:`${S.ch.setterName}'s Tally challenge beat me (X/${S.max})`):`Tally practice ${sc}/7`;
   const rows=S.guesses.map(g=>score(g,S.code).state.map(s=>s==='hit'?'🟩':s==='near'?'🟨':'⬜').join(''));
   return [head,...rows,SITE].join('\n');
 }
 function showResult(){
+  if(S.mode==='challenge'){showChallengeResult();return}
   const n=S.guesses.length,pts=pointsFor(S.won,n);
   const answer=[...S.code].map(d=>`<div class="tile ${S.won?'hit':'miss'}"><span class="d">${d}</span><span class="a"></span></div>`).join('');
   const title=S.won?`Cracked in ${n} · ${pts} pts`:'Out of guesses · 0 pts';
@@ -605,6 +874,7 @@ function showResult(){
 /* ---------- Wire up ---------- */
 $('btnHelp').addEventListener('click',showHelp);
 $('btnBoard').addEventListener('click',()=>showBoard());
+$('btnChallenge').addEventListener('click',()=>showChallenges());
 $('btnPractice').addEventListener('click',()=>{if(S.mode==='practice'&&!S.done&&S.guesses.length===0)return toast('Practice code ready');startPractice()});
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&modal){if(!(e.target.closest&&e.target.closest('form')))closeSheet();return}
@@ -615,8 +885,11 @@ document.addEventListener('keydown',e=>{
 });
 
 buildKeypad();startDaily();
-if(auth)auth.onAuthStateChanged(async u=>{user=u;if(u){try{await loadPlayer();await postScore()}catch(e){console.warn(e)}}else player=null});
-if(!prefs.seenHelp)setTimeout(showHelp,300);
+if(auth)auth.onAuthStateChanged(async u=>{user=u;if(u){try{await loadPlayer();await postScore()}catch(e){console.warn(e)}}else player=null;authReadyResolve()});
+else authReadyResolve();
+const link=/^#c([A-Za-z0-9]{10,40})$/.exec(location.hash);
+if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
+else if(!prefs.seenHelp)setTimeout(showHelp,300);
 else if(S.done)setTimeout(showResult,400);
 })();
 </script>
