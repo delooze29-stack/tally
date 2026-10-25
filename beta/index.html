@@ -766,7 +766,12 @@ async function fillNotify(el){
     try{
       const perm=await Notification.requestPermission();
       if(perm!=='granted'){err.textContent='Notifications weren\'t allowed. You can allow them in your phone settings.';b.disabled=false;b.textContent=label;return}
-      const reg=await navigator.serviceWorker.ready;
+      /* Use this page's own background script. Waiting on "ready" could pick up the main site's one,
+         which covers the same address but can't show messages. */
+      const reg=await navigator.serviceWorker.register('sw.js');
+      await reg.update().catch(()=>{});
+      const sw=reg.active||reg.waiting||reg.installing;
+      if(sw&&sw.state!=='activated')await new Promise(r=>{sw.addEventListener('statechange',()=>{if(sw.state==='activated')r()});setTimeout(r,4000)});
       const t=await firebase.messaging().getToken({vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
       if(!t)throw new Error('no token');
       await pushRef().set({...prefs(),name:player?player.name:'',tokens:FV().arrayUnion(t),updated:FV().serverTimestamp()},{merge:true});
@@ -778,6 +783,7 @@ async function fillNotify(el){
     off.disabled=true;
     try{
       await pushRef().set({tokens:FV().arrayRemove(token),updated:FV().serverTimestamp()},{merge:true});
+      try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg){const sub=await reg.pushManager.getSubscription();if(sub)await sub.unsubscribe()}}catch(e){}
       try{await firebase.messaging().deleteToken()}catch(e){}
       store.set(pushTokenKey(),null);toast('Notifications off on this phone');fillNotify(el);
     }catch(x){console.warn(x);off.disabled=false;toast('Could not turn them off. Try again.')}

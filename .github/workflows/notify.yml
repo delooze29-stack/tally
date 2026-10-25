@@ -27,13 +27,13 @@ jobs:
         run: |
           if [ -z "$SA" ]; then echo "ready=no" >> "$GITHUB_OUTPUT"; echo "Not set up yet - nothing to do."; else echo "ready=yes" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.check.outputs.ready == 'yes'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.check.outputs.ready == 'yes'
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install
         if: steps.check.outputs.ready == 'yes'

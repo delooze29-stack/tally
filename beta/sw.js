@@ -1,7 +1,7 @@
 /* Tally background script: install, offline start, and notifications.
    Always tries the network first so updates show straight away; the saved copy is
    only used when offline. Firebase and fonts are never cached here. */
-const CACHE = 'tally-beta-v1';
+const CACHE = 'tally-beta-v2';
 const ICONS = '../icons/';
 const SHELL = ['./', './index.html', './manifest.webmanifest', ICONS + 'icon-192.png', ICONS + 'badge-96.png'];
 const abs = p => new URL(p, self.location).href;
@@ -26,12 +26,25 @@ self.addEventListener('fetch', e => {
 });
 
 /* Notifications. The big picture is the Tally icon; the small status-bar icon (badge)
-   is a white shape on a clear background, which is what Android needs to avoid a white block. */
+   is a white shape on a clear background, which is what Android needs to avoid a white block.
+   Reads every message layout Firebase can use, so the text always shows. */
+function readPush(e) {
+  let j = {};
+  try { j = e.data ? e.data.json() : {}; } catch (x) { return { body: e.data ? e.data.text() : '' }; }
+  const parts = [j, j.data, j.notification, j.message && j.message.data, j.message && j.message.notification,
+                 j.webpush && j.webpush.notification, j.data && j.data.notification];
+  const out = {};
+  for (const p of parts) {
+    if (!p || typeof p !== 'object') continue;
+    for (const k of ['title', 'body', 'tag', 'url']) if (p[k] && !out[k]) out[k] = p[k];
+  }
+  if (!out.url && j.fcmOptions && j.fcmOptions.link) out.url = j.fcmOptions.link;
+  return out;
+}
 self.addEventListener('push', e => {
-  let d = {};
-  try { const j = e.data.json(); d = j.data || j.notification || j; } catch (x) { d = { body: e.data ? e.data.text() : '' }; }
+  const d = readPush(e);
   e.waitUntil(self.registration.showNotification(d.title || 'Tally', {
-    body: d.body || '',
+    body: d.body || 'A new Tally code is ready.',
     icon: abs(ICONS + 'icon-192.png'),
     badge: abs(ICONS + 'badge-96.png'),
     tag: d.tag || 'tally',

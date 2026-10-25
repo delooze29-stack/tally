@@ -31,7 +31,7 @@ async function send(doc, { title, body, tag, url = SITE, ttl = 6 * 3600 }) {
   const res = await fcm.sendEachForMulticast({
     tokens,
     data: { title, body, tag, url },
-    webpush: { headers: { Urgency: 'high', TTL: String(ttl) } },
+    webpush: { headers: { Urgency: 'high', TTL: String(ttl) }, fcmOptions: { link: url } },
   });
   sent += res.successCount;
   const bad = res.responses.map((r, i) => (r.error && BAD_TOKEN.has(r.error.code) ? tokens[i] : null)).filter(Boolean);
