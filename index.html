@@ -153,8 +153,9 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .field label{font-size:13px;font-weight:600}
 .field input{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 12px;font:inherit;font-size:16px}
 .err{color:var(--bad);font-size:14px;font-weight:600;min-height:1em}
-.tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:4px;border-radius:10px;background:var(--bg)}
-.tabs button{border:none;background:transparent;border-radius:7px;height:36px;font-weight:700;font-size:13px;color:var(--muted)}
+.tabs{display:grid;grid-template-columns:repeat(var(--tabs,3),1fr);gap:4px;padding:4px;border-radius:10px;background:var(--bg)}
+.tabs button{border:none;background:transparent;border-radius:7px;height:36px;font-weight:700;font-size:13px;color:var(--muted);white-space:nowrap;padding:0 4px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:400px){.tabs button{font-size:12px}}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px var(--shade)}
 .board-list{display:grid;gap:2px;margin:0;padding:0;list-style:none}
 .board-list li{display:grid;grid-template-columns:28px 1fr auto auto;gap:10px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
@@ -276,6 +277,8 @@ function londonParts(t){
 }
 function roundAt(t){const p=londonParts(t);const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return d*2+(p.h>=20?2:p.h>=8?1:0)}
 const ROUND=roundAt(Date.now()), RKEY=R_BASE+ROUND;
+/* Today's two codes (UK date): the 8am one and the 8pm one. */
+function todayKeys(){const p=londonParts(Date.now());const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return [R_BASE+2*d+1,R_BASE+2*d+2]}
 const isEvening=()=>ROUND%2===0;
 function msToNext(){const now=Date.now();let lo=now,hi=now+13*36e5;while(hi-lo>1000){const mid=(lo+hi)/2;if(roundAt(mid)>ROUND)hi=mid;else lo=mid}return hi-now}
 /* If a new code arrives while Tally is open, load it (unless you're mid-game). */
@@ -884,7 +887,7 @@ const LUCKY_MSG=`<div class="note ok">First-guess win 🍀 That's about a 1 in 5
 let lbTab='today';
 function showBoard(tab){
   if(tab)lbTab=tab;
-  const tabs=`<div class="tabs" role="tablist">${[['today','This code'],['all','All time'],['me','My stats']].map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
+  const tabs=`<div class="tabs" role="tablist" style="--tabs:4">${[['today','This code'],['day','Today'],['all','All time'],['me','My stats']].map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><button class="link" id="signOut">Sign out</button></div>`:'';
   openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>`,sh=>{
     sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
@@ -904,6 +907,19 @@ async function fillBoard(el){
       rows=q.docs.map(d=>d.data()).filter(d=>!isHeld(lucky,d.uid)).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
         
         .map(d=>({uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':'')+(d.clue?' 💡':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}));
+    }else if(lbTab==='day'){
+      /* Today: both of today's codes added up per player. */
+      const [q,lucky]=await Promise.all([db.collection('scores').where('day','in',todayKeys()).get(),loadLucky(true).catch(()=>({}))]);
+      const by={};
+      q.docs.map(d=>d.data()).forEach(d=>{
+        if(isHeld(lucky,d.uid))return;
+        const p=by[d.uid]||(by[d.uid]={uid:d.uid,name:d.name,pts:0,codes:0,secs:0,timed:true,lucky:false,clue:false});
+        p.pts+=d.points;p.codes++;p.secs+=d.secs||0;if(!d.secs)p.timed=false;
+        if(d.won&&d.guesses===1)p.lucky=true;if(d.clue)p.clue=true;
+      });
+      held=new Set(q.docs.map(d=>d.data().uid).filter(u=>isHeld(lucky,u))).size;
+      rows=Object.values(by).sort((a,b)=>b.pts-a.pts||b.codes-a.codes||a.secs-b.secs)
+        .map(p=>({uid:p.uid,name:p.name+(p.lucky?' 🍀':'')+(p.clue?' 💡':''),pts:p.pts,meta:`${p.codes} code${p.codes>1?'s':''}`+(p.timed&&p.secs?` · ${fmtTime(p.secs)}`:'')}));
     }else{
       const [q,atts,lucky]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[]),loadLucky().catch(()=>({}))]);
       held=q.docs.filter(d=>isHeld(lucky,d.id)).length;
@@ -914,12 +930,13 @@ async function fillBoard(el){
     }
   }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
   let html='';
-  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":'No scores yet.'}</p>`;
+  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":lbTab==='day'?"No scores yet today. Today's first code starts at 8am.":'No scores yet.'}</p>`;
   else{
     let pos=0,prev=null;
     html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
+  if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: 8am and 8pm.</p>`+html;
   if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
   if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
   if(!user)html+=`<div class="label" style="margin-top:18px">Get on the board</div>`+signInHTML();
