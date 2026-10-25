@@ -772,8 +772,13 @@ async function fillNotify(el){
       await reg.update().catch(()=>{});
       const sw=reg.active||reg.waiting||reg.installing;
       if(sw&&sw.state!=='activated')await new Promise(r=>{sw.addEventListener('statechange',()=>{if(sw.state==='activated')r()});setTimeout(r,4000)});
+      /* Start fresh: clear any old sign-up Firebase remembers (it may be dead), then make a new one. */
+      try{await firebase.messaging().deleteToken()}catch(e){}
+      try{const old=await reg.pushManager.getSubscription();if(old)await old.unsubscribe()}catch(e){}
       const t=await firebase.messaging().getToken({vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
       if(!t)throw new Error('no token');
+      const old=store.get(pushTokenKey());
+      if(old&&old!==t)await pushRef().set({tokens:FV().arrayRemove(old),updated:FV().serverTimestamp()},{merge:true}).catch(()=>{});
       await pushRef().set({...prefs(),name:player?player.name:'',tokens:FV().arrayUnion(t),updated:FV().serverTimestamp()},{merge:true});
       store.set(pushTokenKey(),t);toast(onHere?'Choices saved':'Notifications are on');fillNotify(el);
     }catch(x){console.warn(x);err.textContent='Could not turn them on. Check your connection and try again.';b.disabled=false;b.textContent=label}
@@ -783,8 +788,7 @@ async function fillNotify(el){
     off.disabled=true;
     try{
       await pushRef().set({tokens:FV().arrayRemove(token),updated:FV().serverTimestamp()},{merge:true});
-      try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg){const sub=await reg.pushManager.getSubscription();if(sub)await sub.unsubscribe()}}catch(e){}
-      try{await firebase.messaging().deleteToken()}catch(e){}
+      try{await firebase.messaging().deleteToken()}catch(e){console.warn(e)}
       store.set(pushTokenKey(),null);toast('Notifications off on this phone');fillNotify(el);
     }catch(x){console.warn(x);off.disabled=false;toast('Could not turn them off. Try again.')}
   });

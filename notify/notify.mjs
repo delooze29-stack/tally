@@ -36,7 +36,7 @@ async function send(doc, { title, body, tag, url = SITE, ttl = 6 * 3600 }) {
   sent += res.successCount;
   const bad = res.responses.map((r, i) => (r.error && BAD_TOKEN.has(r.error.code) ? tokens[i] : null)).filter(Boolean);
   if (bad.length) await db.collection('push').doc(doc.uid).update({ tokens: FV.arrayRemove(...bad) });
-  res.responses.forEach((r, i) => { if (r.error && !BAD_TOKEN.has(r.error.code)) console.warn('Send failed:', r.error.code); });
+  res.responses.forEach((r, i) => { if (r.error) console.warn(`Phone ${i + 1} of ${doc.name}: ${r.error.code}${BAD_TOKEN.has(r.error.code) ? ' (removed, they need to turn notifications on again)' : ''}`); });
 }
 
 const pushDocs = (await db.collection('push').get()).docs
@@ -47,9 +47,9 @@ console.log(`Code No. ${R}, UK ${String(lp.h).padStart(2, '0')}:${String(minute)
 // ---- Test: a one-off notification to one player, from the Actions tab ----
 if (TEST) {
   const doc = pushDocs.find(d => (d.name || '').toLowerCase() === TEST);
-  if (!doc) { console.log(`No player called "${TEST}" has notifications turned on.`); process.exit(0); }
+  if (!doc) { console.log(`No player called "${TEST}" has notifications on. Players with them on: ${pushDocs.map(d => d.name).join(', ') || 'none'}`); process.exit(0); }
   await send(doc, { title: 'Tally test 🔔', body: 'Notifications are working. See you at the next code!', tag: 'test' });
-  console.log(`Test sent to ${doc.name}: ${sent} device(s).`);
+  console.log(`Test for ${doc.name}: delivered to ${sent} of ${(doc.tokens || []).length} phone(s).`);
   process.exit(0);
 }
 
