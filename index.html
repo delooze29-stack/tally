@@ -394,6 +394,8 @@ function draw(){
 function drawClue(){
   const el=$('clueText');
   if(S.mode!=='daily'||S.clueUsed||S.done){el.textContent=S.clue;return}
+  /* Free for the last two goes: no points taken off. */
+  if(S.guesses.length>=MAX-2){el.textContent=S.clue;$('clueLabel').textContent='Free clue';return}
   el.innerHTML=`<button class="cluebtn" id="clueBtn" type="button">💡 Show clue <span>−${CLUE_COST} pts</span></button>`;
   const b=$('clueBtn');
   b.addEventListener('click',()=>{
@@ -450,7 +452,7 @@ function submit(){
   for(let i=0;i<LEN;i++){
     setTimeout(()=>{tiles[i].classList.add('flip');setTimeout(()=>setTile(tiles[i],g[i],res.state[i],res.arrow[i]),RM?0:250)},i*step);
   }
-  setTimeout(()=>{busy=false;drawKeys();if(S.done)finish(r)},RM?20:(LEN-1)*step+520);
+  setTimeout(()=>{busy=false;drawKeys();if(S.mode==='daily'&&!S.done&&!S.clueUsed&&S.guesses.length===MAX-2){drawClue();toast('Last two goes: the clue is free')}if(S.done)finish(r)},RM?20:(LEN-1)*step+520);
 }
 function shake(row){row.classList.remove('shake');void row.offsetWidth;row.classList.add('shake')}
 function record(){
@@ -588,7 +590,7 @@ function showHelp(){
   openSheet(`<h2>How to play</h2>
   <ol class="rules">
     <li>Crack the hidden 5-digit code in 7 guesses. Digits can repeat and the code can start with 0.</li>
-    <li>Each code has a maths clue, like "the 2nd and 4th digits multiply to 24". It's hidden to start with: showing it costs 2 points off that code's score. Players who used it get a 💡 on the leaderboard.</li>
+    <li>Each code has a maths clue, like "the 2nd and 4th digits multiply to 24". It's hidden to start with: showing it costs 2 points off that code's score, but it's free for your last two goes. Players who paid for it get a 💡 on the leaderboard.</li>
     <li>After each guess the tiles change colour, and grey and yellow tiles show an arrow for that spot.</li>
     <li>Tap the 🔔 to get a notification when each new code is ready.</li>
     <li>Tap the crossed swords to set your own code as a challenge, or take on someone else's (up to 5 a day). Points are staked, so the winner takes them. A timer shows how long you took.</li>
