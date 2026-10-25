@@ -39,15 +39,22 @@ async function send(doc, { title, body, tag, url = SITE, ttl = 6 * 3600 }) {
   res.responses.forEach((r, i) => { if (r.error) console.warn(`Phone ${i + 1} of ${doc.name}: ${r.error.code}${BAD_TOKEN.has(r.error.code) ? ' (removed, they need to turn notifications on again)' : ''}`); });
 }
 
-const pushDocs = (await db.collection('push').get()).docs
-  .map(d => ({ uid: d.id, ...d.data() }))
-  .filter(d => (d.tokens || []).length);
-console.log(`Code No. ${R}, UK ${String(lp.h).padStart(2, '0')}:${String(minute).padStart(2, '0')}, ${pushDocs.length} player(s) with notifications on.`);
+// Everyone's notification settings are only loaded when something is due, to keep
+// database reads low (this runs 96 times a day).
+let pushCache = null;
+async function players() {
+  if (!pushCache) pushCache = (await db.collection('push').get()).docs
+    .map(d => ({ uid: d.id, ...d.data() }))
+    .filter(d => (d.tokens || []).length);
+  return pushCache;
+}
+console.log(`Code No. ${R}, UK ${String(lp.h).padStart(2, '0')}:${String(minute).padStart(2, '0')}.`);
 
 // ---- Test: a one-off notification to one player, from the Actions tab ----
 if (TEST) {
-  const doc = pushDocs.find(d => (d.name || '').toLowerCase() === TEST);
-  if (!doc) { console.log(`No player called "${TEST}" has notifications on. Players with them on: ${pushDocs.map(d => d.name).join(', ') || 'none'}`); process.exit(0); }
+  const all = await players();
+  const doc = all.find(d => (d.name || '').toLowerCase() === TEST);
+  if (!doc) { console.log(`No player called "${TEST}" has notifications on. Players with them on: ${all.map(d => d.name).join(', ') || 'none'}`); process.exit(0); }
   await send(doc, { title: 'Tally test 🔔', body: 'Notifications are working. See you at the next code!', tag: 'test' });
   console.log(`Test for ${doc.name}: delivered to ${sent} of ${(doc.tokens || []).length} phone(s).`);
   process.exit(0);
@@ -65,7 +72,7 @@ if (meta.lastRound == null) {
 } else if (R > meta.lastRound) {
   if (inWindow) {
     const morning = R % 2 === 1;
-    for (const d of pushDocs.filter(d => d.codes !== false)) {
+    for (const d of (await players()).filter(d => d.codes !== false)) {
       await send(d, {
         title: morning ? 'Morning code is ready 🔢' : 'Evening code is ready 🔢',
         body: `Tally No. ${R} is ready. Can you crack it in 7?`,
@@ -84,7 +91,7 @@ let newest = since;
 for (const a of recent) {
   if (a.ts && a.ts.toMillis() > newest.toMillis()) newest = a.ts;
   if (a.status !== 'done') continue;
-  const setter = pushDocs.find(d => d.uid === a.setter && d.mine !== false);
+  const setter = (await players()).find(d => d.uid === a.setter && d.mine !== false);
   if (!setter) continue;
   const n = (a.g || []).length;
   await send(setter, a.won
@@ -99,7 +106,7 @@ if (lp.h === 18 && meta.lastDigest !== today) {
   const open = (await db.collection('challenges').where('open', '==', true).get()).docs
     .map(d => ({ id: d.id, ...d.data() })).filter(c => c.expires > now);
   const tried = new Set((await db.collection('attempts').get()).docs.map(d => `${d.data().ch}_${d.data().uid}`));
-  for (const d of pushDocs.filter(d => d.daily !== false)) {
+  for (const d of (await players()).filter(d => d.daily !== false)) {
     const waiting = open.filter(c => c.setter !== d.uid && !tried.has(`${c.id}_${d.uid}`)).length;
     if (!waiting) continue;
     await send(d, {
