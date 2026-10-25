@@ -1,0 +1,29 @@
+name: Tally clean-up
+
+# One-off: removes this morning's old-style daily scores (25 Oct, day 3) and corrects totals.
+# Run it once with the box blank to preview, then again with "yes" to apply.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Type yes to make the changes (leave blank to preview only)'
+        required: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install
+        working-directory: notify
+        run: npm install --no-save --no-audit --no-fund firebase-admin@12.7.0
+      - name: Clean up
+        working-directory: notify
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          APPLY: ${{ github.event.inputs.apply }}
+        run: node cleanup.mjs
