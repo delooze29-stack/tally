@@ -68,6 +68,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .clock.run{color:var(--ink)}
 .clock.done{color:var(--hit)}
 .clue.practice .clue-label{color:var(--near)}
+.cluebtn{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;font-weight:700;font-size:14px;color:var(--ink)}
+.cluebtn span{color:var(--bad);font-family:var(--mono);font-size:12px;margin-left:4px}
 
 .board-wrap{flex:1;min-height:0;display:grid;place-items:center}
 .board{display:grid;gap:6px;padding:10px;border-radius:14px;background:var(--panel);border:1px solid var(--slotline)}
@@ -313,6 +315,14 @@ function score(g,c){
   return {state,arrow};
 }
 const pointsFor=(won,n)=>won?POINTS[n-1]:0;
+/* The clue for the 8am/8pm code costs points: using it takes CLUE_COST off what you score
+   for that code (never below 0). Practice games and challenges keep their clue free. */
+const CLUE_COST=2;
+function codePts(n){
+  if(S.remote)return S.remote.points;
+  const base=pointsFor(S.won,n);
+  return S.mode==='daily'&&S.clueUsed?Math.max(0,base-CLUE_COST):base;
+}
 
 /* ---------- Local stats ---------- */
 let stats=store.get('tally.stats')||{played:0,wins:0,streak:0,best:0,dist:[0,0,0,0,0,0,0],last:0};
@@ -333,7 +343,7 @@ function startDaily(){
   const p=puzzle(ROUND*7919+2026), saved=store.get(dayKey());
   S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,posted:false,max:MAX};
   S.elapsed=0;S.runFrom=0;S.secs=0;
-  if(saved&&saved.n===ROUND){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;S.remote=saved.remote||null;
+  if(saved&&saved.n===ROUND){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;S.remote=saved.remote||null;S.clueUsed=!!saved.clueUsed;
     /* A game started before the timer existed has guesses but no time: don't record a misleading time. */
     if(saved.noTime||(saved.elapsed==null&&S.guesses.length))S.noTime=true}
   draw();
@@ -344,7 +354,7 @@ function startPractice(){
   draw();toast('Practice code ready');
 }
 function persist(){
-  if(S.mode==='daily')store.set(dayKey(),{n:ROUND,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs,noTime:!!S.noTime,remote:S.remote||null});
+  if(S.mode==='daily')store.set(dayKey(),{n:ROUND,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs,noTime:!!S.noTime,remote:S.remote||null,clueUsed:!!S.clueUsed});
   if(S.mode==='challenge')store.set('tally.chclock.'+S.ch.id,{elapsed:clockMs(),secs:S.secs});
 }
 
@@ -371,7 +381,7 @@ function draw(){
   $('sub').textContent=S.mode==='daily'?`No. ${ROUND} · ${new Date().toLocaleDateString('en-GB',{weekday:'short',timeZone:'Europe/London'})} ${isEvening()?'pm':'am'}`:S.mode==='challenge'?`Crack in ${S.max} · ${S.ch.stake} pts`:'Practice · not counted';
   $('clue').classList.toggle('practice',S.mode!=='daily');
   $('clueLabel').textContent=S.mode==='daily'?(isEvening()?"Tonight's clue":"Today's clue"):S.mode==='challenge'?`${S.ch.setterName}'s clue`:'Practice clue';
-  $('clueText').textContent=S.clue;
+  drawClue();
   const b=$('board');b.innerHTML='';
   for(let r=0;r<S.max;r++){
     const row=document.createElement('div');row.className='row';
@@ -380,6 +390,16 @@ function draw(){
     if(r<S.guesses.length)paintRow(r);
   }
   drawCurrent();drawKeys();renderClock();
+}
+function drawClue(){
+  const el=$('clueText');
+  if(S.mode!=='daily'||S.clueUsed||S.done){el.textContent=S.clue;return}
+  el.innerHTML=`<button class="cluebtn" id="clueBtn" type="button">💡 Show clue <span>−${CLUE_COST} pts</span></button>`;
+  const b=$('clueBtn');
+  b.addEventListener('click',()=>{
+    if(b.dataset.sure!=='1'){b.dataset.sure='1';b.innerHTML=`Tap again to spend ${CLUE_COST} pts`;setTimeout(()=>{if(b.isConnected&&b.dataset.sure==='1'){b.dataset.sure='';b.innerHTML=`💡 Show clue <span>−${CLUE_COST} pts</span>`}},4000);return}
+    S.clueUsed=true;persist();drawClue();toast(`Clue shown. ${CLUE_COST} pts off this code's score`);
+  });
 }
 function paintRow(r){
   const g=S.guesses[r],res=score(g,S.code),tiles=$('board').children[r].children;
@@ -434,7 +454,7 @@ function submit(){
 }
 function shake(row){row.classList.remove('shake');void row.offsetWidth;row.classList.add('shake')}
 function record(){
-  stats.played++;stats.points+=pointsFor(S.won,S.guesses.length);
+  stats.played++;stats.points+=codePts(S.guesses.length);
   if(S.won){stats.wins++;stats.streak=(stats.last===ROUND-1)?stats.streak+1:1;stats.best=Math.max(stats.best,stats.streak);stats.dist[S.guesses.length-1]++}
   else stats.streak=0;
   stats.last=S.won?ROUND:0;
@@ -443,7 +463,7 @@ function record(){
 function finish(r){
   if(S.won){
     const words=['Genius','Brilliant','Sharp','Solid','Nice','Close one','Phew'];
-    toast(S.mode==='challenge'?`Cracked it! +${S.ch.stake} pts`:`${words[r]}! +${POINTS[r]} points`);
+    toast(S.mode==='challenge'?`Cracked it! +${S.ch.stake} pts`:S.mode==='daily'?`${words[r]}! +${codePts(r+1)} points`:`${words[r]}!`);
     [...$('board').children[r].children].forEach((t,i)=>setTimeout(()=>t.classList.add('win'),i*90));
   }else toast('The code was '+S.code);
   setTimeout(showResult,1500);
@@ -526,10 +546,10 @@ async function postScoreOnce(){
     const sid=`${RKEY}_${user.uid}`, sref=db.collection('scores').doc(sid);
     const existing=await sref.get();
     if(existing.exists){S.posted=true;persist();return 'already'}
-    const pts=pointsFor(S.won,S.guesses.length);
+    const pts=codePts(S.guesses.length);
     const next={name:player.name,total:player.total+pts,played:player.played+1,wins:player.wins+(S.won?1:0),last:RKEY};
     const batch=db.batch();
-    batch.set(sref,{uid:user.uid,name:player.name,day:RKEY,guesses:S.guesses.length,won:S.won,points:pts,secs:S.secs||0,ts:firebase.firestore.FieldValue.serverTimestamp()});
+    batch.set(sref,{uid:user.uid,name:player.name,day:RKEY,guesses:S.guesses.length,won:S.won,points:pts,clue:!!S.clueUsed,secs:S.secs||0,ts:firebase.firestore.FieldValue.serverTimestamp()});
     batch.set(db.collection('players').doc(user.uid),next);
     await batch.commit();
     player=next;S.posted=true;persist();
@@ -568,7 +588,7 @@ function showHelp(){
   openSheet(`<h2>How to play</h2>
   <ol class="rules">
     <li>Crack the hidden 5-digit code in 7 guesses. Digits can repeat and the code can start with 0.</li>
-    <li>Each day you get one maths clue, like "the 2nd and 4th digits multiply to 24". Work it out to make your first guess count.</li>
+    <li>Each code has a maths clue, like "the 2nd and 4th digits multiply to 24". It's hidden to start with: showing it costs 2 points off that code's score. Players who used it get a 💡 on the leaderboard.</li>
     <li>After each guess the tiles change colour, and grey and yellow tiles show an arrow for that spot.</li>
     <li>Tap the 🔔 to get a notification when each new code is ready.</li>
     <li>Tap the crossed swords to set your own code as a challenge, or take on someone else's (up to 5 a day). Points are staked, so the winner takes them. A timer shows how long you took.</li>
@@ -881,7 +901,7 @@ async function fillBoard(el){
       held=q.docs.map(d=>d.data()).filter(d=>isHeld(lucky,d.uid)).length;
       rows=q.docs.map(d=>d.data()).filter(d=>!isHeld(lucky,d.uid)).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
         
-        .map(d=>({uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}));
+        .map(d=>({uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':'')+(d.clue?' 💡':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}));
     }else{
       const [q,atts,lucky]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[]),loadLucky().catch(()=>({}))]);
       held=q.docs.filter(d=>isHeld(lucky,d.id)).length;
@@ -1168,17 +1188,17 @@ function copyText(txt,area,msg){
 /* ---------- Result ---------- */
 function untilMidnight(){const s=Math.max(0,Math.floor(msToNext()/1000));return [s/3600|0,(s%3600)/60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
 function shareText(){
-  const n=S.remote?S.remote.guesses:S.guesses.length,sc=S.won?n:'X',pts=pointsFor(S.won,n);
-  const head=S.mode==='daily'?`Tally No. ${ROUND}  ${sc}/7 · ${pts} pts`:
+  const n=S.remote?S.remote.guesses:S.guesses.length,sc=S.won?n:'X',pts=codePts(n);
+  const head=S.mode==='daily'?`Tally No. ${ROUND}  ${sc}/7 · ${pts} pts${S.clueUsed?' · 💡':''}`:
     S.mode==='challenge'?(S.won?`I cracked ${S.ch.setterName}'s Tally challenge in ${n}/${S.max} (+${S.ch.stake} pts)`:`${S.ch.setterName}'s Tally challenge beat me (X/${S.max})`):`Tally practice ${sc}/7`;
   const rows=S.guesses.map(g=>score(g,S.code).state.map(s=>s==='hit'?'🟩':s==='near'?'🟨':'⬜').join(''));
   return [head+(S.secs?` · ⏱ ${fmtTime(S.secs)}`:''),...rows,SITE].join('\n');
 }
 function showResult(){
   if(S.mode==='challenge'){showChallengeResult();return}
-  const n=S.remote?S.remote.guesses:S.guesses.length,pts=pointsFor(S.won,n);
+  const n=S.remote?S.remote.guesses:S.guesses.length,pts=codePts(n);
   const answer=[...S.code].map(d=>`<div class="tile ${S.won?'hit':'miss'}"><span class="d">${d}</span><span class="a"></span></div>`).join('');
-  const title=S.won?`Cracked in ${n} · ${pts} pts`:'Out of guesses · 0 pts';
+  const title=S.won?`Cracked in ${n} · ${pts} pts${S.clueUsed&&S.mode==='daily'?' 💡':''}`:'Out of guesses · 0 pts';
   const timeLine=S.secs?`<div class="timeline"><span class="label">Time taken</span><b>${fmtTime(S.secs)}</b></div>`:'';
   let lbNote='';
   if(S.mode==='daily'){

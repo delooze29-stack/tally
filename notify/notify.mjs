@@ -64,12 +64,11 @@ if (meta.lastRound == null) {
   update.lastRound = R;
 } else if (R > meta.lastRound) {
   if (inWindow) {
-    const { clue } = puzzle(R * 7919 + 2026);
     const morning = R % 2 === 1;
     for (const d of pushDocs.filter(d => d.codes !== false)) {
       await send(d, {
         title: morning ? 'Morning code is ready 🔢' : 'Evening code is ready 🔢',
-        body: `Tally No. ${R}: ${clue}. Can you crack it in 7?`,
+        body: `Tally No. ${R} is ready. Can you crack it in 7?`,
         tag: 'code', ttl: 4 * 3600,
       });
     }

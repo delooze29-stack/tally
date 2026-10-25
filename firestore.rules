@@ -18,6 +18,10 @@ service cloud.firestore {
     function pointsFor(won, guesses) {
       return won ? [0, 10, 8, 6, 4, 3, 2, 1][guesses] : 0;
     }
+    // Showing the clue takes 2 points off that code's score (never below 0).
+    function cluePoints(won, guesses) {
+      return pointsFor(won, guesses) >= 2 ? pointsFor(won, guesses) - 2 : 0;
+    }
     function scorePath(day, uid) {
       return /databases/$(database)/documents/scores/$(string(day) + '_' + uid);
     }
@@ -64,7 +68,7 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['uid', 'name', 'day', 'guesses', 'won', 'points', 'secs', 'ts'])
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'day', 'guesses', 'won', 'points', 'clue', 'secs', 'ts'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.day is int
         && validDay(request.resource.data.day)
@@ -75,7 +79,9 @@ service cloud.firestore {
         && (request.resource.data.won || request.resource.data.guesses == 7)
         && request.resource.data.secs is int
         && request.resource.data.secs >= 0 && request.resource.data.secs <= 86400
-        && request.resource.data.points == pointsFor(request.resource.data.won, request.resource.data.guesses)
+        && (request.resource.data.get('clue', false) == true
+              ? request.resource.data.points == cluePoints(request.resource.data.won, request.resource.data.guesses)
+              : request.resource.data.points == pointsFor(request.resource.data.won, request.resource.data.guesses))
         && request.resource.data.ts == request.time
         && request.resource.data.name == get(/databases/$(database)/documents/players/$(request.auth.uid)).data.name
         && getAfter(/databases/$(database)/documents/players/$(request.auth.uid)).data.last == request.resource.data.day;
