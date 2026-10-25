@@ -724,7 +724,7 @@ function showInstallSteps(){
 /* ---------- Notifications ----------
    Each player chooses what they want. The sending is done by a scheduled job on GitHub
    (.github/workflows/notify.yml), so it costs nothing. */
-const VAPID_KEY='';   // From Firebase: Project settings > Cloud Messaging > Web Push certificates
+const VAPID_KEY='BOy3jkYpQhsz8cQgbIG7-mFrsBEn4mnbV4rKwaDh_0OXhVAdVgHCrfjYJF7f9HWUsF2Vjh-C-VENkpTDIIv2Zz0';   // From Firebase: Project settings > Cloud Messaging > Web Push certificates
 const pushRef=()=>db.collection('push').doc(user.uid);
 const pushTokenKey=()=>'tally.push.'+user.uid;
 function pushSupport(){
