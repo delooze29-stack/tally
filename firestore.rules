@@ -6,6 +6,15 @@ service cloud.firestore {
     function dayNow() {
       return int(math.floor((request.time.toMillis() - 1792713600000) / 86400000)) + 1;
     }
+    // Two codes a day (8am and 8pm UK). Code No. 1 started 07:00 UTC on 23 Oct 2026.
+    // Allow one code either side for clock changes. These scores use day = 100000 + code number.
+    function roundNow() {
+      return int(math.floor((request.time.toMillis() - 1792738800000) / 43200000)) + 1;
+    }
+    function validDay(d) {
+      return (d >= dayNow() - 1 && d <= dayNow() + 1)
+        || (d >= 100000 && d - 100000 >= roundNow() - 1 && d - 100000 <= roundNow() + 1);
+    }
     function pointsFor(won, guesses) {
       return won ? [0, 10, 8, 6, 4, 3, 2, 1][guesses] : 0;
     }
@@ -58,8 +67,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['uid', 'name', 'day', 'guesses', 'won', 'points', 'secs', 'ts'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.day is int
-        && request.resource.data.day >= dayNow() - 1
-        && request.resource.data.day <= dayNow() + 1
+        && validDay(request.resource.data.day)
         && scoreId == string(request.resource.data.day) + '_' + request.auth.uid
         && request.resource.data.guesses is int
         && request.resource.data.guesses >= 1 && request.resource.data.guesses <= 7
@@ -73,6 +81,21 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/players/$(request.auth.uid)).data.last == request.resource.data.day;
 
       allow update, delete: if false;
+    }
+
+    // Notification settings. Private: only the player can see or change their own.
+    // The sender on GitHub uses an admin key, which isn't limited by these rules.
+    match /push/{uid} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['codes', 'mine', 'daily', 'name', 'tokens', 'updated'])
+        && request.resource.data.tokens is list && request.resource.data.tokens.size() <= 10
+        && request.resource.data.updated == request.time;
+    }
+
+    // Used only by the notification sender.
+    match /meta/{doc} {
+      allow read, write: if false;
     }
 
     // Clears for players put on hold by mistake. Only you can add these, in the Firebase console.
