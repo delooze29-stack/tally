@@ -1,7 +1,7 @@
 /* Tally background script: lets the game be installed and open without a signal.
    Always tries the network first so updates show straight away; the saved copy is
    only used when offline. Firebase and fonts are never cached here. */
-const CACHE = 'tally-v2';
+const CACHE = 'tally-v3';
 const ICONS = 'icons/';
 const abs = p => new URL(p, self.location).href;
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];

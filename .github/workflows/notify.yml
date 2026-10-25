@@ -46,6 +46,6 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           TEST_NICKNAME: ${{ github.event.inputs.test_nickname }}
-          # Links in notifications open the beta while we're testing. Set to '' when it goes live.
-          TALLY_PATH: 'beta/'
+          # Links in notifications open the main game. (Set to 'beta/' to test a beta copy.)
+          TALLY_PATH: ''
         run: node notify.mjs

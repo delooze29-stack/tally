@@ -52,8 +52,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   --tile:max(30px, min(54px, calc((100vw - 88px) / 5), calc((100dvh - 3 * var(--key) - 250px) / 7)))}
 
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand{display:flex;flex-direction:column;gap:3px;min-width:0}
+.titlerow{display:flex;align-items:center;gap:8px}
 .brand h1{margin:0;font-family:var(--display);font-weight:900;font-size:34px;letter-spacing:.06em;text-transform:uppercase;line-height:1}
+.beta{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:var(--near);color:var(--on);padding:2px 6px;border-radius:5px;align-self:center}
 .sub{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .tools{display:flex;gap:6px;flex-shrink:0}
 .icon{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center}
@@ -136,6 +138,9 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .ico{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-4px;margin-right:8px}
 .inline-ico{width:18px;height:18px;margin:0 2px}
 [data-install]{display:flex;align-items:center;justify-content:center}
+.toggles{display:grid;gap:14px}
+.stack{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.stack>*{min-width:0}
 .note.warn{border-left:4px solid var(--near)}
 .note.bad{border-left:4px solid var(--bad)}
 
@@ -199,14 +204,16 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .check{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600}
 .check input{width:20px;height:20px;accent-color:var(--hit)}
 
+@media (max-width:400px){.tools{gap:4px}.icon{width:34px;height:34px}.icon svg{width:17px;height:17px}.brand h1{font-size:30px}.top{gap:8px}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand"><h1>Tally</h1><span class="sub" id="sub"></span></div>
+    <div class="brand"><div class="titlerow"><h1>Tally</h1><span class="beta" id="betaTag" hidden>Beta</span></div><span class="sub" id="sub"></span></div>
     <nav class="tools">
+      <button class="icon" id="btnBell" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
       <button class="icon" id="btnHelp" aria-label="How to play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.3-2.7 4"/><path d="M12 17.6v.1"/></svg></button>
       <button class="icon" id="btnBoard" aria-label="Leaderboard"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/></svg></button>
       <button class="icon" id="btnChallenge" aria-label="Challenges"><svg viewBox="0 0 24 24"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5M5 14l4 4M7 17l-3 3M3 19l2 2"/></svg></button>
@@ -223,10 +230,12 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
 /* Tally © 2026 Mathew Doughty. All rights reserved. Not licensed for copying or reuse. */
 (function(){
-const SITE='delooze29-stack.github.io/tally';
+const SITE=location.protocol==='https:'?(location.host+location.pathname).replace(/index\.html$/,'').replace(/\/$/,''):'delooze29-stack.github.io/tally';
+const IS_BETA=/\/beta\//.test(location.pathname);
 const MAX=7, LEN=5, POINTS=[10,8,6,4,3,2,1];
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -254,6 +263,21 @@ const emailFor=n=>slug(n)+'@players.tally.game';
 const EPOCH=Date.UTC(2026,9,23);
 function todayNum(){const d=new Date();return Math.floor((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-EPOCH)/864e5)+1}
 const DAY=todayNum();
+/* Two codes a day, UK time: a morning code from 8am and an evening code from 8pm.
+   Code No. 1 was the morning of Fri 23 Oct 2026. Scores for these codes are saved with
+   day = 100000 + code number, so they never mix with the old once-a-day scores. */
+const R_BASE=100000;
+function londonParts(t){
+  try{const o={};new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'})
+    .formatToParts(new Date(t)).forEach(p=>o[p.type]=p.value);return {y:+o.year,m:+o.month,d:+o.day,h:+o.hour%24}}
+  catch(e){const d=new Date(t);return {y:d.getFullYear(),m:d.getMonth()+1,d:d.getDate(),h:d.getHours()}}
+}
+function roundAt(t){const p=londonParts(t);const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return d*2+(p.h>=20?2:p.h>=8?1:0)}
+const ROUND=roundAt(Date.now()), RKEY=R_BASE+ROUND;
+const isEvening=()=>ROUND%2===0;
+function msToNext(){const now=Date.now();let lo=now,hi=now+13*36e5;while(hi-lo>1000){const mid=(lo+hi)/2;if(roundAt(mid)>ROUND)hi=mid;else lo=mid}return hi-now}
+/* If a new code arrives while Tally is open, load it (unless you're mid-game). */
+setInterval(()=>{if(roundAt(Date.now())!==ROUND&&S&&S.mode!=='challenge'&&(S.done||!S.guesses.length)&&!modal)location.reload()},30000);
 
 function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 function puzzle(seed){
@@ -302,14 +326,14 @@ let S, busy=false, modal=false;
 const dayKey=()=>'tally.day.'+(user?user.uid:'anon');
 (function migrateOldSave(){
   const old=store.get('tally.day');if(!old)return;
-  if(old.n===DAY&&!old.posted&&!store.get('tally.day.anon'))store.set('tally.day.anon',old);
+  if(old.n===ROUND&&!old.posted&&!store.get('tally.day.anon'))store.set('tally.day.anon',old);
   try{localStorage.removeItem('tally.day')}catch(e){}
 })();
 function startDaily(){
-  const p=puzzle(DAY*7919+13), saved=store.get(dayKey());
+  const p=puzzle(ROUND*7919+2026), saved=store.get(dayKey());
   S={mode:'daily',code:p.code,clue:p.clue,guesses:[],current:'',done:false,won:false,posted:false,max:MAX};
   S.elapsed=0;S.runFrom=0;S.secs=0;
-  if(saved&&saved.n===DAY){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;S.remote=saved.remote||null;
+  if(saved&&saved.n===ROUND){S.guesses=saved.guesses||[];S.done=!!saved.done;S.won=!!saved.won;S.posted=!!saved.posted;S.elapsed=saved.elapsed||0;S.secs=saved.secs||0;S.remote=saved.remote||null;
     /* A game started before the timer existed has guesses but no time: don't record a misleading time. */
     if(saved.noTime||(saved.elapsed==null&&S.guesses.length))S.noTime=true}
   draw();
@@ -320,7 +344,7 @@ function startPractice(){
   draw();toast('Practice code ready');
 }
 function persist(){
-  if(S.mode==='daily')store.set(dayKey(),{n:DAY,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs,noTime:!!S.noTime,remote:S.remote||null});
+  if(S.mode==='daily')store.set(dayKey(),{n:ROUND,guesses:S.guesses,done:S.done,won:S.won,posted:S.posted,elapsed:clockMs(),secs:S.secs,noTime:!!S.noTime,remote:S.remote||null});
   if(S.mode==='challenge')store.set('tally.chclock.'+S.ch.id,{elapsed:clockMs(),secs:S.secs});
 }
 
@@ -344,9 +368,9 @@ window.addEventListener('pagehide',pauseClock);
 /* ---------- Board ---------- */
 function draw(){
   const date=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
-  $('sub').textContent=S.mode==='daily'?`No. ${DAY} · ${date}`:S.mode==='challenge'?`Crack in ${S.max} · ${S.ch.stake} pts`:'Practice · not counted';
+  $('sub').textContent=S.mode==='daily'?`No. ${ROUND} · ${new Date().toLocaleDateString('en-GB',{weekday:'short',timeZone:'Europe/London'})} ${isEvening()?'pm':'am'}`:S.mode==='challenge'?`Crack in ${S.max} · ${S.ch.stake} pts`:'Practice · not counted';
   $('clue').classList.toggle('practice',S.mode!=='daily');
-  $('clueLabel').textContent=S.mode==='daily'?"Today's clue":S.mode==='challenge'?`${S.ch.setterName}'s clue`:'Practice clue';
+  $('clueLabel').textContent=S.mode==='daily'?(isEvening()?"Tonight's clue":"Today's clue"):S.mode==='challenge'?`${S.ch.setterName}'s clue`:'Practice clue';
   $('clueText').textContent=S.clue;
   const b=$('board');b.innerHTML='';
   for(let r=0;r<S.max;r++){
@@ -411,9 +435,9 @@ function submit(){
 function shake(row){row.classList.remove('shake');void row.offsetWidth;row.classList.add('shake')}
 function record(){
   stats.played++;stats.points+=pointsFor(S.won,S.guesses.length);
-  if(S.won){stats.wins++;stats.streak=(stats.last===DAY-1)?stats.streak+1:1;stats.best=Math.max(stats.best,stats.streak);stats.dist[S.guesses.length-1]++}
+  if(S.won){stats.wins++;stats.streak=(stats.last===ROUND-1)?stats.streak+1:1;stats.best=Math.max(stats.best,stats.streak);stats.dist[S.guesses.length-1]++}
   else stats.streak=0;
-  stats.last=S.won?DAY:0;
+  stats.last=S.won?ROUND:0;
   store.set('tally.stats',stats);
 }
 function finish(r){
@@ -440,22 +464,22 @@ function switchUser(){
     if(user){
       await loadPlayer();
       const anon=store.get('tally.day.anon'), mine=store.get(dayKey());
-      if(anon&&anon.n===DAY&&!anon.posted&&(anon.guesses||[]).length&&!(mine&&mine.n===DAY&&(mine.guesses||[]).length)){
+      if(anon&&anon.n===ROUND&&!anon.posted&&(anon.guesses||[]).length&&!(mine&&mine.n===ROUND&&(mine.guesses||[]).length)){
         store.set(dayKey(),anon);store.set('tally.day.anon',null);
       }
       try{
         const cur=store.get(dayKey());
-        if(!(cur&&cur.n===DAY&&cur.done)){
-          const snap=await db.collection('scores').doc(`${DAY}_${user.uid}`).get();
+        if(!(cur&&cur.n===ROUND&&cur.done)){
+          const snap=await db.collection('scores').doc(`${RKEY}_${user.uid}`).get();
           if(snap.exists){const d=snap.data();
-            store.set(dayKey(),{n:DAY,guesses:[],done:true,won:d.won,posted:true,secs:d.secs||0,elapsed:0,remote:{guesses:d.guesses,points:d.points}})}
+            store.set(dayKey(),{n:ROUND,guesses:[],done:true,won:d.won,posted:true,secs:d.secs||0,elapsed:0,remote:{guesses:d.guesses,points:d.points}})}
         }
       }catch(e){console.warn(e)}
     }
     if(!S||S.mode==='daily'){
       const wasFresh=!S||!S.guesses.length;
       startDaily();
-      if(S.remote&&wasFresh)toast(`You've already played today: ${S.won?S.remote.guesses:'X'}/7, ${S.remote.points} pts`);
+      if(S.remote&&wasFresh)toast(`You've already played this code: ${S.won?S.remote.guesses:'X'}/7, ${S.remote.points} pts`);
     }
     if(user)res=await postScore();
     return res;
@@ -499,13 +523,13 @@ async function postScoreOnce(){
   if(!user||!db||S.mode!=='daily'||!S.done||S.posted)return 'none';
   try{
     if(!player)await loadPlayer();
-    const sid=`${DAY}_${user.uid}`, sref=db.collection('scores').doc(sid);
+    const sid=`${RKEY}_${user.uid}`, sref=db.collection('scores').doc(sid);
     const existing=await sref.get();
     if(existing.exists){S.posted=true;persist();return 'already'}
     const pts=pointsFor(S.won,S.guesses.length);
-    const next={name:player.name,total:player.total+pts,played:player.played+1,wins:player.wins+(S.won?1:0),last:DAY};
+    const next={name:player.name,total:player.total+pts,played:player.played+1,wins:player.wins+(S.won?1:0),last:RKEY};
     const batch=db.batch();
-    batch.set(sref,{uid:user.uid,name:player.name,day:DAY,guesses:S.guesses.length,won:S.won,points:pts,secs:S.secs||0,ts:firebase.firestore.FieldValue.serverTimestamp()});
+    batch.set(sref,{uid:user.uid,name:player.name,day:RKEY,guesses:S.guesses.length,won:S.won,points:pts,secs:S.secs||0,ts:firebase.firestore.FieldValue.serverTimestamp()});
     batch.set(db.collection('players').doc(user.uid),next);
     await batch.commit();
     player=next;S.posted=true;persist();
@@ -522,7 +546,7 @@ function openSheet(html,mount){
   $('sheet').innerHTML='<button class="close" aria-label="Close" data-close>✕</button>'+html;$('scrim').hidden=false;$('sheet').scrollTop=0;
   if(mount)mount($('sheet'));
 }
-function closeSheet(){modal=false;$('scrim').hidden=true;clearInterval(tick)}
+function closeSheet(){modal=false;$('scrim').hidden=true;clearInterval(tick);if(askPending)setTimeout(maybeAskPush,400)}
 /* Close only on a deliberate tap on the dark backdrop: the press must start AND end there,
    so dragging out of a text box (selecting a name, autofill menus) never closes the window.
    Windows with a sign-in form never close from the backdrop at all, only from the X. */
@@ -546,6 +570,7 @@ function showHelp(){
     <li>Crack the hidden 5-digit code in 7 guesses. Digits can repeat and the code can start with 0.</li>
     <li>Each day you get one maths clue, like "the 2nd and 4th digits multiply to 24". Work it out to make your first guess count.</li>
     <li>After each guess the tiles change colour, and grey and yellow tiles show an arrow for that spot.</li>
+    <li>Tap the 🔔 to get a notification when each new code is ready.</li>
     <li>Tap the crossed swords to set your own code as a challenge, or take on someone else's (up to 5 a day). Points are staked, so the winner takes them. A timer shows how long you took.</li>
   </ol>
   <div><div class="label" style="margin-bottom:8px">Example: the code is 38516</div><div class="ex">${exampleRow()}</div></div>
@@ -556,7 +581,7 @@ function showHelp(){
   </div>
   <div><div class="label" style="margin-bottom:8px">Points for the leaderboard</div>
   <div class="ptable"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>✕</span><b>10</b><b>8</b><b>6</b><b>4</b><b>3</b><b>2</b><b>1</b><b>0</b></div></div>
-  <p class="muted">A new code arrives at midnight. Pick a nickname from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
+  <p class="muted">A new code arrives at 8am and 8pm (UK time). Pick a nickname from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
   ${installHTML()}
   <p class="muted" style="font-size:12px">Tally © 2026 Mathew Doughty. All rights reserved.</p>`,mountInstall);
   prefs.seenHelp=true;store.set('tally.prefs',prefs);
@@ -665,7 +690,11 @@ const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigat
 const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e});
 window.addEventListener('appinstalled',()=>{installEvt=null;toast('Tally is on your home screen')});
-if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(e=>console.warn(e));
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){
+  navigator.serviceWorker.register('sw.js').catch(e=>console.warn(e));
+  /* The test copy (/beta/) has gone. Remove its background script so it can't send double notifications. */
+  if(!IS_BETA)navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>{if(/\/beta\/$/.test(r.scope))r.unregister()})).catch(()=>{});
+}
 function installHTML(){
   if(isStandalone())return '';
   return `<button class="btn" type="button" data-install>
@@ -697,6 +726,111 @@ function showInstallSteps(){
     <p class="muted">Opened Tally from a Facebook link? Tap the ⋯ menu and choose <strong>Open in browser</strong> first.</p>`);
 }
 
+/* ---------- Notifications ----------
+   Each player chooses what they want. The sending is done by a scheduled job on GitHub
+   (.github/workflows/notify.yml), so it costs nothing. */
+const VAPID_KEY='BOy3jkYpQhsz8cQgbIG7-mFrsBEn4mnbV4rKwaDh_0OXhVAdVgHCrfjYJF7f9HWUsF2Vjh-C-VENkpTDIIv2Zz0';   // From Firebase: Project settings > Cloud Messaging > Web Push certificates
+const pushRef=()=>db.collection('push').doc(user.uid);
+const pushTokenKey=()=>'tally.push.'+user.uid;
+function pushSupport(){
+  if(!VAPID_KEY)return 'notready';
+  if(isIOS()&&!isStandalone())return 'ios';
+  if(!('serviceWorker' in navigator)||!('Notification' in window)||!('PushManager' in window))return 'unsupported';
+  if(typeof firebase==='undefined'||typeof firebase.messaging!=='function')return 'unsupported';
+  if(Notification.permission==='denied')return 'blocked';
+  return 'ok';
+}
+async function enablePush(prefs){
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted')return 'denied';
+    /* Use this page's own background script, never one from another part of the site. */
+    const reg=await navigator.serviceWorker.register('sw.js');
+    await reg.update().catch(()=>{});
+    const sw=reg.active||reg.waiting||reg.installing;
+    if(sw&&sw.state!=='activated')await new Promise(r=>{sw.addEventListener('statechange',()=>{if(sw.state==='activated')r()});setTimeout(r,4000)});
+    /* Start fresh: clear any old sign-up Firebase remembers (it may be dead), then make a new one. */
+    try{await firebase.messaging().deleteToken()}catch(e){}
+    try{const sub=await reg.pushManager.getSubscription();if(sub)await sub.unsubscribe()}catch(e){}
+    const t=await firebase.messaging().getToken({vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
+    if(!t)throw new Error('no token');
+    const old=store.get(pushTokenKey());
+    if(old&&old!==t)await pushRef().set({tokens:FV().arrayRemove(old),updated:FV().serverTimestamp()},{merge:true}).catch(()=>{});
+    await pushRef().set({...prefs,name:player?player.name:'',tokens:FV().arrayUnion(t),updated:FV().serverTimestamp()},{merge:true});
+    store.set(pushTokenKey(),t);
+    return 'ok';
+  }catch(x){console.warn(x);return 'error'}
+}
+
+/* Asked once per player per phone, the first time they're signed in: would they like notifications?
+   Only when this phone can actually show them and they haven't already said yes or no. */
+let askPending=false;
+const askedKey=()=>'tally.askedPush.'+user.uid;
+function maybeAskPush(){
+  if(!user||!db||store.get(askedKey()))return;
+  if(pushSupport()!=='ok'||Notification.permission!=='default')return;
+  if(modal||busy||(S&&S.guesses.length&&!S.done)){askPending=true;return}
+  askPending=false;store.set(askedKey(),1);
+  openSheet(`<h2>Get a nudge?</h2>
+    <p>Tally can tell you when a new code is ready at 8am and 8pm, and when someone plays one of your challenges.</p>
+    <div class="err" id="askErr"></div>
+    <div class="actions"><button class="btn primary" id="askYes">Yes, turn them on</button><button class="btn" id="askNo">Not now</button></div>
+    <p class="muted">You can change this any time with the 🔔 button at the top.</p>`,sh=>{
+    sh.querySelector('#askNo').addEventListener('click',closeSheet);
+    sh.querySelector('#askYes').addEventListener('click',async e=>{
+      e.target.disabled=true;e.target.textContent='Setting up…';
+      const r=await enablePush({codes:true,mine:true,daily:true});
+      if(r==='ok'){closeSheet();toast('Notifications are on');return}
+      if(r==='denied'){closeSheet();toast('No problem. Turn them on any time with 🔔');return}
+      sh.querySelector('#askErr').textContent='Could not turn them on. Try again from the 🔔 button.';e.target.hidden=true;
+    });
+  });
+}
+
+function showNotify(){
+  openSheet(`<h2>Notifications</h2><div id="ntBody" class="stack"><p class="muted">Loading…</p></div>`,sh=>fillNotify(sh.querySelector('#ntBody')));
+}
+async function fillNotify(el){
+  await authReady;
+  if(!user){el.innerHTML=`<p>Pick a nickname first, so Tally knows who to send them to.</p>`+signInHTML();mountSignIn(el,()=>showNotify());return}
+  const sup=pushSupport();
+  if(sup==='notready'){el.innerHTML=`<p>Notifications are nearly ready. Check back soon.</p>`;return}
+  if(sup==='ios'){el.innerHTML=`<p>On iPhone, notifications only work once Tally is on your home screen.</p><p class="muted">Add it, open Tally from the new icon, then come back here.</p>${installHTML()}`;mountInstall(el);return}
+  if(sup==='unsupported'){el.innerHTML=`<p>This browser can't show notifications.</p><p class="muted">Use Chrome on Android, or Safari on iPhone with Tally added to your home screen.</p>`;return}
+  if(sup==='blocked'){el.innerHTML=`<p>Notifications are blocked for Tally on this phone.</p><p class="muted">Allow them for this site in your phone or browser settings, then come back here.</p>`;return}
+  let doc={};try{const d=await pushRef().get();if(d.exists)doc=d.data()}catch(e){console.warn(e)}
+  const token=store.get(pushTokenKey());
+  const onHere=!!token&&Notification.permission==='granted'&&(doc.tokens||[]).includes(token);
+  const pref=k=>doc[k]!==false;
+  el.innerHTML=`<p class="muted">Choose what Tally tells you about. You can change this any time.</p>
+   <div class="toggles">
+    <label class="check"><input type="checkbox" id="ntCodes" ${pref('codes')?'checked':''}> New code ready, at 8am and 8pm</label>
+    <label class="check"><input type="checkbox" id="ntMine" ${pref('mine')?'checked':''}> Someone plays one of my challenges</label>
+    <label class="check"><input type="checkbox" id="ntDaily" ${pref('daily')?'checked':''}> Challenges waiting for me, once a day at 6pm</label>
+   </div>
+   <div class="note ${onHere?'ok':''}">${onHere?'Notifications are on for this phone.':'Notifications are off on this phone.'}</div>
+   <div class="err" id="ntErr"></div>
+   <div class="actions"><button class="btn primary" id="ntOn">${onHere?'Save choices':'Turn on notifications'}</button>${onHere?'<button class="btn" id="ntOff">Turn off on this phone</button>':''}</div>`;
+  const prefs=()=>({codes:el.querySelector('#ntCodes').checked,mine:el.querySelector('#ntMine').checked,daily:el.querySelector('#ntDaily').checked});
+  el.querySelector('#ntOn').addEventListener('click',async e=>{
+    const b=e.target, err=el.querySelector('#ntErr'), label=b.textContent;
+    err.textContent='';b.disabled=true;b.textContent='Setting up…';
+    const r=await enablePush(prefs());
+    if(r==='ok'){toast(onHere?'Choices saved':'Notifications are on');fillNotify(el);return}
+    err.textContent=r==='denied'?'Notifications weren\'t allowed. You can allow them in your phone settings.':'Could not turn them on. Check your connection and try again.';
+    b.disabled=false;b.textContent=label;
+  });
+  const off=el.querySelector('#ntOff');
+  if(off)off.addEventListener('click',async()=>{
+    off.disabled=true;
+    try{
+      await pushRef().set({tokens:FV().arrayRemove(token),updated:FV().serverTimestamp()},{merge:true});
+      try{await firebase.messaging().deleteToken()}catch(e){console.warn(e)}
+      store.set(pushTokenKey(),null);toast('Notifications off on this phone');fillNotify(el);
+    }catch(x){console.warn(x);off.disabled=false;toast('Could not turn them off. Try again.')}
+  });
+}
+
 /* ---------- Fair play ----------
    Cracking the code first time is about a 1 in 5,000 chance. Twice in 7 days is about
    1 in 25 million, three times about 1 in 125 billion. So:
@@ -711,12 +845,12 @@ async function loadLucky(force){
   if(!db)return {};
   if(!force&&luckyCache&&Date.now()-luckyAt<20000)return luckyCache;
   const [q,cl]=await Promise.all([
-    db.collection('scores').where('day','>=',DAY-6).get(),
+    db.collection('scores').where('day','>=',RKEY-13).get(),
     db.collection('clears').get().catch(()=>({docs:[]}))
   ]);
   const cleared={};cl.docs.forEach(d=>cleared[d.id]=+d.data().day||0);
   const lucky={};
-  q.docs.forEach(d=>{const x=d.data();if(x.won&&x.guesses===1&&x.day>(cleared[x.uid]||0))lucky[x.uid]=(lucky[x.uid]||0)+1});
+  q.docs.forEach(d=>{const x=d.data();if(x.won&&x.guesses===1&&x.day-R_BASE>(cleared[x.uid]||0))lucky[x.uid]=(lucky[x.uid]||0)+1});
   luckyCache=lucky;luckyAt=Date.now();return lucky;
 }
 const isHeld=(lucky,uid)=>(lucky[uid]||0)>=LUCKY_HOLD;
@@ -728,7 +862,7 @@ const LUCKY_MSG=`<div class="note ok">First-guess win 🍀 That's about a 1 in 5
 let lbTab='today';
 function showBoard(tab){
   if(tab)lbTab=tab;
-  const tabs=`<div class="tabs" role="tablist">${[['today','Today'],['all','All time'],['me','My stats']].map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
+  const tabs=`<div class="tabs" role="tablist">${[['today','This code'],['all','All time'],['me','My stats']].map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><button class="link" id="signOut">Sign out</button></div>`:'';
   openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>`,sh=>{
     sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
@@ -742,7 +876,7 @@ async function fillBoard(el){
   let rows=[], held=0;
   try{
     if(lbTab==='today'){
-      const [q,lucky]=await Promise.all([db.collection('scores').where('day','==',DAY).get(),loadLucky(true).catch(()=>({}))]);
+      const [q,lucky]=await Promise.all([db.collection('scores').where('day','==',RKEY).get(),loadLucky(true).catch(()=>({}))]);
       const t=d=>d.secs||1e9;
       held=q.docs.map(d=>d.data()).filter(d=>isHeld(lucky,d.uid)).length;
       rows=q.docs.map(d=>d.data()).filter(d=>!isHeld(lucky,d.uid)).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
@@ -758,7 +892,7 @@ async function fillBoard(el){
     }
   }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
   let html='';
-  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted today's score yet. Be the first.":'No scores yet.'}</p>`;
+  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":'No scores yet.'}</p>`;
   else{
     let pos=0,prev=null;
     html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
@@ -1032,10 +1166,10 @@ function copyText(txt,area,msg){
 }
 
 /* ---------- Result ---------- */
-function untilMidnight(){const n=new Date(),m=new Date(n);m.setHours(24,0,0,0);const s=Math.max(0,Math.floor((m-n)/1000));return [s/3600|0,(s%3600)/60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
+function untilMidnight(){const s=Math.max(0,Math.floor(msToNext()/1000));return [s/3600|0,(s%3600)/60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')}
 function shareText(){
   const n=S.remote?S.remote.guesses:S.guesses.length,sc=S.won?n:'X',pts=pointsFor(S.won,n);
-  const head=S.mode==='daily'?`Tally No. ${DAY}  ${sc}/7 · ${pts} pts`:
+  const head=S.mode==='daily'?`Tally No. ${ROUND}  ${sc}/7 · ${pts} pts`:
     S.mode==='challenge'?(S.won?`I cracked ${S.ch.setterName}'s Tally challenge in ${n}/${S.max} (+${S.ch.stake} pts)`:`${S.ch.setterName}'s Tally challenge beat me (X/${S.max})`):`Tally practice ${sc}/7`;
   const rows=S.guesses.map(g=>score(g,S.code).state.map(s=>s==='hit'?'🟩':s==='near'?'🟨':'⬜').join(''));
   return [head+(S.secs?` · ⏱ ${fmtTime(S.secs)}`:''),...rows,SITE].join('\n');
@@ -1087,6 +1221,7 @@ function showResult(){
 
 /* ---------- Wire up ---------- */
 $('btnHelp').addEventListener('click',showHelp);
+$('btnBell').addEventListener('click',showNotify);
 $('btnBoard').addEventListener('click',()=>showBoard());
 $('btnChallenge').addEventListener('click',()=>showChallenges());
 $('btnPractice').addEventListener('click',()=>{if(S.mode==='practice'&&!S.done&&S.guesses.length===0)return toast('Practice code ready');startPractice()});
@@ -1099,7 +1234,8 @@ document.addEventListener('keydown',e=>{
 });
 
 buildKeypad();startDaily();
-if(auth)auth.onAuthStateChanged(async u=>{user=u;if(!u)player=null;try{await switchUser()}catch(e){console.warn(e)}authReadyResolve()});
+if(IS_BETA)$('betaTag').hidden=false;
+if(auth)auth.onAuthStateChanged(async u=>{user=u;if(!u)player=null;try{await switchUser()}catch(e){console.warn(e)}authReadyResolve();if(u)setTimeout(maybeAskPush,1500)});
 else authReadyResolve();
 const link=/^#c([A-Za-z0-9]{10,40})$/.exec(location.hash);
 if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
