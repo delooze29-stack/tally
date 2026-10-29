@@ -266,7 +266,7 @@ const emailFor=n=>slug(n)+'@players.tally.game';
 const EPOCH=Date.UTC(2026,9,23);
 function todayNum(){const d=new Date();return Math.floor((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-EPOCH)/864e5)+1}
 const DAY=todayNum();
-/* Two codes a day, UK time: a morning code from 8am and an evening code from 8pm.
+/* Two codes a day, UK time: a morning code from 6am and an evening code from 8pm.
    Code No. 1 was the morning of Fri 23 Oct 2026. Scores for these codes are saved with
    day = 100000 + code number, so they never mix with the old once-a-day scores. */
 const R_BASE=100000;
@@ -275,9 +275,9 @@ function londonParts(t){
     .formatToParts(new Date(t)).forEach(p=>o[p.type]=p.value);return {y:+o.year,m:+o.month,d:+o.day,h:+o.hour%24}}
   catch(e){const d=new Date(t);return {y:d.getFullYear(),m:d.getMonth()+1,d:d.getDate(),h:d.getHours()}}
 }
-function roundAt(t){const p=londonParts(t);const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return d*2+(p.h>=20?2:p.h>=8?1:0)}
+function roundAt(t){const p=londonParts(t);const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return d*2+(p.h>=20?2:p.h>=6?1:0)}
 const ROUND=roundAt(Date.now()), RKEY=R_BASE+ROUND;
-/* Today's two codes (UK date): the 8am one and the 8pm one. */
+/* Today's two codes (UK date): the 6am one and the 8pm one. */
 function todayKeys(){const p=londonParts(Date.now());const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return [R_BASE+2*d+1,R_BASE+2*d+2]}
 const isEvening=()=>ROUND%2===0;
 function msToNext(){const now=Date.now();let lo=now,hi=now+13*36e5;while(hi-lo>1000){const mid=(lo+hi)/2;if(roundAt(mid)>ROUND)hi=mid;else lo=mid}return hi-now}
@@ -318,7 +318,7 @@ function score(g,c){
   return {state,arrow};
 }
 const pointsFor=(won,n)=>won?POINTS[n-1]:0;
-/* The clue for the 8am/8pm code costs points: using it takes CLUE_COST off what you score
+/* The clue for the 6am/8pm code costs points: using it takes CLUE_COST off what you score
    for that code (never below 0). Practice games and challenges keep their clue free. */
 const CLUE_COST=2;
 function codePts(n){
@@ -606,7 +606,7 @@ function showHelp(){
   </div>
   <div><div class="label" style="margin-bottom:8px">Points for the leaderboard</div>
   <div class="ptable"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>✕</span><b>10</b><b>8</b><b>6</b><b>4</b><b>3</b><b>2</b><b>1</b><b>0</b></div></div>
-  <p class="muted">A new code arrives at 8am and 8pm (UK time). Pick a nickname from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
+  <p class="muted">A new code arrives at 6am and 8pm (UK time). Pick a nickname from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
   ${installHTML()}
   <p class="muted">Questions, ideas or a problem? Email <strong style="user-select:all">tallypuzzle@gmail.com</strong></p>
   <p class="muted" style="font-size:12px">Tally © 2026 Mathew Doughty. All rights reserved.</p>`,mountInstall);
@@ -798,7 +798,7 @@ function maybeAskPush(){
   if(modal||busy||(S&&S.guesses.length&&!S.done)){askPending=true;return}
   askPending=false;store.set(askedKey(),1);
   openSheet(`<h2>Get a nudge?</h2>
-    <p>Tally can tell you when a new code is ready at 8am and 8pm, and when someone plays one of your challenges.</p>
+    <p>Tally can tell you when a new code is ready at 6am and 8pm, and when someone plays one of your challenges.</p>
     <div class="err" id="askErr"></div>
     <div class="actions"><button class="btn primary" id="askYes">Yes, turn them on</button><button class="btn" id="askNo">Not now</button></div>
     <p class="muted">You can change this any time with the 🔔 button at the top.</p>`,sh=>{
@@ -830,7 +830,7 @@ async function fillNotify(el){
   const pref=k=>doc[k]!==false;
   el.innerHTML=`<p class="muted">Choose what Tally tells you about. You can change this any time.</p>
    <div class="toggles">
-    <label class="check"><input type="checkbox" id="ntCodes" ${pref('codes')?'checked':''}> New code ready, at 8am and 8pm</label>
+    <label class="check"><input type="checkbox" id="ntCodes" ${pref('codes')?'checked':''}> New code ready, at 6am and 8pm</label>
     <label class="check"><input type="checkbox" id="ntMine" ${pref('mine')?'checked':''}> Someone plays one of my challenges</label>
     <label class="check"><input type="checkbox" id="ntDaily" ${pref('daily')?'checked':''}> Challenges waiting for me, once a day at 6pm</label>
    </div>
@@ -931,13 +931,13 @@ async function fillBoard(el){
     }
   }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
   let html='';
-  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":lbTab==='day'?"No scores yet today. Today's first code starts at 8am.":'No scores yet.'}</p>`;
+  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":lbTab==='day'?"No scores yet today. Today's first code starts at 6am.":'No scores yet.'}</p>`;
   else{
     let pos=0,prev=null;
     html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
-  if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: 8am and 8pm.</p>`+html;
+  if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: 6am and 8pm.</p>`+html;
   if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
   if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
   if(!user)html+=`<div class="label" style="margin-top:18px">Get on the board</div>`+signInHTML();

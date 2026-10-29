@@ -26,6 +26,6 @@ function londonParts(t){
     .formatToParts(new Date(t)).forEach(p=>o[p.type]=p.value);return {y:+o.year,m:+o.month,d:+o.day,h:+o.hour%24}}
   catch(e){const d=new Date(t);return {y:d.getFullYear(),m:d.getMonth()+1,d:d.getDate(),h:d.getHours()}}
 }
-function roundAt(t){const p=londonParts(t);const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return d*2+(p.h>=20?2:p.h>=8?1:0)}
+function roundAt(t){const p=londonParts(t);const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return d*2+(p.h>=20?2:p.h>=6?1:0)}
 const LEN=5;
 export {puzzle, roundAt, londonParts};

@@ -1,6 +1,6 @@
 // Tally notification sender. GitHub runs this every 15 minutes (.github/workflows/notify.yml).
 // It only sends to players who turned notifications on in the game, and only what they chose:
-//   codes  - "new code ready" at 8am and 8pm UK time
+//   codes  - "new code ready" at 6am and 8pm UK time
 //   mine   - someone finished one of your challenges
 //   daily  - 6pm round-up of challenges waiting for you
 // It does nothing until the FIREBASE_SERVICE_ACCOUNT secret is added to the GitHub repo.
@@ -64,9 +64,9 @@ const metaRef = db.doc('meta/push');
 const meta = (await metaRef.get()).data() || {};
 const update = {};
 
-// ---- 1. New code at 8am and 8pm ----
+// ---- 1. New code at 6am and 8pm ----
 // Sent once per code, within 90 minutes of it starting (GitHub's timer can run a little late).
-const inWindow = lp.h === 8 || lp.h === 20 || ((lp.h === 9 || lp.h === 21) && minute < 30);
+const inWindow = lp.h === 6 || lp.h === 20 || ((lp.h === 7 || lp.h === 21) && minute < 30);
 if (meta.lastRound == null) {
   update.lastRound = R;
 } else if (R > meta.lastRound) {
