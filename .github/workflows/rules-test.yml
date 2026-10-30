@@ -19,7 +19,9 @@ jobs:
         run: npm install --no-audit --no-fund firebase-tools@13.29.1 @firebase/rules-unit-testing@3.0.4 firebase@10.12.2
       - name: Run rules tests
         working-directory: ruletest
-        run: npx firebase emulators:exec --only firestore --project demo-tally "node rules.test.mjs" || echo "EMULATOR ERROR" >> results.txt
+        run: |
+          npx firebase emulators:exec --only firestore --project demo-tally "node rules.test.mjs" > emu.log 2>&1 || echo "EMULATOR ERROR" >> results.txt
+          grep -v "^\s*$" emu.log | grep -iv "deprecat" | tail -12 | while read -r line; do echo "::warning title=LOG::${line}"; done
       - name: Report results
         working-directory: ruletest
         run: |
