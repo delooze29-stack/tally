@@ -16,7 +16,9 @@ jobs:
         with: { distribution: temurin, java-version: 21 }
       - name: Install
         working-directory: ruletest
-        run: npm install --no-audit --no-fund firebase-tools@13.29.1 @firebase/rules-unit-testing@3.0.4 firebase@10.12.2
+        run: |
+          cp ../firestore.rules .
+          npm install --no-audit --no-fund firebase-tools@13.29.1 @firebase/rules-unit-testing@3.0.4 firebase@10.12.2
       - name: Run rules tests
         working-directory: ruletest
         run: |

@@ -2,7 +2,7 @@ import fs from 'fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { doc, setDoc, updateDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
 
-const env = await initializeTestEnvironment({ projectId: 'demo-tally', firestore: { rules: fs.readFileSync('../firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
+const env = await initializeTestEnvironment({ projectId: 'demo-tally', firestore: { rules: fs.readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
 const DAY = Math.floor((Date.now() - 1792713600000) / 864e5) + 1;
 const exp = () => Date.now() + 7 * 864e5;
 const out = []; let fails = 0;
