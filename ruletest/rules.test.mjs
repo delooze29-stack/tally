@@ -8,7 +8,7 @@ const exp = () => Date.now() + 7 * 864e5;
 const out = []; let fails = 0;
 async function t(name, fn, ok) {
   try { ok ? await assertSucceeds(fn()) : await assertFails(fn()); out.push(`PASS ${name}`); }
-  catch (e) { fails++; out.push(`FAIL ${name} :: ${String(e && e.message || e).slice(0, 300)}`); }
+  catch (e) { fails++; out.push(`FAIL ${name} :: ${String(e && e.message || e).replace(/\s+/g, ' ').slice(0, 600)}`); }
 }
 await env.withSecurityRulesDisabled(async ctx => {
   const d = ctx.firestore();
