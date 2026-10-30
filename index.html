@@ -187,6 +187,17 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .chip{font-weight:700;font-size:14px;font-family:var(--mono)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid2>*{min-width:0}
+.scope{display:flex;gap:8px;align-items:center}
+.scope select{flex:1;min-width:0;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px;font:inherit;font-weight:700}
+.scope .btn{min-height:40px;flex:0 0 auto}
+.dot{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:9px;background:var(--bad);color:var(--on);font-size:11px;margin-left:4px}
+.note.invite{display:grid;gap:8px;border-left:4px solid var(--accent)}
+.mlist{list-style:none;margin:0;padding:0;display:grid}
+.tag{display:inline-block;font-size:11px;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+.mlist li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line)}
+.mlist li>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid3{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3>*{min-width:0}
 .flabel{font-size:13px;font-weight:600}
 .cluebox{padding:12px;border-radius:10px;border:1px dashed var(--line);background:var(--bg);font-weight:600;line-height:1.4}
 .field input,.field select,.field textarea{width:100%;min-width:0}
@@ -468,7 +479,7 @@ function record(){
 function finish(r){
   if(S.won){
     const words=['Genius','Brilliant','Sharp','Solid','Nice','Close one','Phew'];
-    toast(S.mode==='challenge'?`Cracked it! +${S.ch.stake} pts`:S.mode==='daily'?`${words[r]}! +${codePts(r+1)} points`:`${words[r]}!`);
+    toast(S.mode==='challenge'?'Cracked it!':S.mode==='daily'?`${words[r]}! +${codePts(r+1)} points`:`${words[r]}!`);
     [...$('board').children[r].children].forEach((t,i)=>setTimeout(()=>t.classList.add('win'),i*90));
   }else toast('The code was '+S.code);
   setTimeout(showResult,1500);
@@ -519,7 +530,7 @@ function switchUser(){
 let playerP=null, playerUid=null, postP=null;
 function loadPlayer(){
   if(!user){player=null;return Promise.resolve()}
-  if(playerP&&playerUid===user.uid)return playerP;
+  if(playerP&&playerUid===user.uid&&player)return playerP;
   playerUid=user.uid;
   playerP=loadPlayerOnce().catch(e=>{playerP=null;throw e});
   return playerP;
@@ -595,6 +606,7 @@ function showHelp(){
     <li>Crack the hidden 5-digit code in 7 guesses. Digits can repeat and the code can start with 0.</li>
     <li>Each code has a maths clue, like "the 2nd and 4th digits multiply to 24". It's hidden to start with: showing it costs 2 points off that code's score, but it's free for your last two goes. Players who paid for it get a 💡 on the leaderboard.</li>
     <li>After each guess the tiles change colour, and grey and yellow tiles show an arrow for that spot.</li>
+    <li>Start a private league for friends or work from the trophy button: 🏆 Leagues.</li>
     <li>Tap the 🔔 to get a notification when each new code is ready.</li>
     <li>Tap the crossed swords to set your own code as a challenge, or take on someone else's (up to 5 a day). Points are staked, so the winner takes them. A timer shows how long you took.</li>
   </ol>
@@ -831,7 +843,7 @@ async function fillNotify(el){
   el.innerHTML=`<p class="muted">Choose what Tally tells you about. You can change this any time.</p>
    <div class="toggles">
     <label class="check"><input type="checkbox" id="ntCodes" ${pref('codes')?'checked':''}> New code ready, at 6am and 8pm</label>
-    <label class="check"><input type="checkbox" id="ntMine" ${pref('mine')?'checked':''}> Someone plays one of my challenges</label>
+    <label class="check"><input type="checkbox" id="ntMine" ${pref('mine')?'checked':''}> My challenges and league invites</label>
     <label class="check"><input type="checkbox" id="ntDaily" ${pref('daily')?'checked':''}> Challenges waiting for me, once a day at 6pm</label>
    </div>
    <div class="note ${onHere?'ok':''}">${onHere?'Notifications are on for this phone.':'Notifications are off on this phone.'}</div>
@@ -885,13 +897,182 @@ const WARN_MSG=`<div class="note warn"><strong>That's ${LUCKY_WARN} first-guess 
 const LUCKY_MSG=`<div class="note ok">First-guess win 🍀 That's about a 1 in 5,000 chance. It shows with a clover on today's leaderboard.</div>`;
 
 /* ---------- Leaderboard ---------- */
-let lbTab='today';
+/* ---------- Private leagues ----------
+   A league is a group of players with its own tables. Same games, same points:
+   This code and Today show members' scores; All time counts points earned since each member joined.
+   leagues/{id}   name, owner, ownerName, members[], created
+   members/{id_uid}  league, uid, name, joined   (when each member joined)
+   invites/{id_uid}  league, leagueName, uid, name, from, ts */
+const LG_MAX=50;
+let myLeagues=[], myInvites=[], lbScope='';
+try{lbScope=localStorage.getItem('tally.lbScope')||''}catch(e){}
+async function loadLeagues(){
+  if(!user||!db){myLeagues=[];myInvites=[];return}
+  const [l,i]=await Promise.all([
+    db.collection('leagues').where('members','array-contains',user.uid).get(),
+    db.collection('invites').where('uid','==',user.uid).get()]);
+  myLeagues=l.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
+  myInvites=i.docs.map(d=>({id:d.id,...d.data()}));
+  if(lbScope&&!myLeagues.some(x=>x.id===lbScope))setScope('');
+}
+function setScope(id){lbScope=id;try{localStorage.setItem('tally.lbScope',id)}catch(e){}}
+const scopeLeague=()=>myLeagues.find(x=>x.id===lbScope)||null;
+async function leagueJoined(lg){
+  const q=await db.collection('members').where('league','==',lg.id).get();
+  const j={};q.docs.forEach(d=>{const x=d.data();j[x.uid]={name:x.name,joined:x.joined&&x.joined.toMillis?x.joined.toMillis():0}});
+  return j;
+}
+/* All time in a league: points from codes and challenges since each member joined. */
+async function leagueAllTime(lg,lucky){
+  const joined=await leagueJoined(lg), ids=lg.members.slice();
+  const chunks=[];for(let i=0;i<ids.length;i+=30)chunks.push(ids.slice(i,i+30));
+  const [snaps,atts]=await Promise.all([Promise.all(chunks.map(c=>db.collection('scores').where('uid','in',c).get())),loadAttempts().catch(()=>[])]);
+  const tot={};ids.forEach(u=>tot[u]={uid:u,name:(joined[u]||{}).name||'Player',pts:0,played:0});
+  const ms=t=>t&&t.toMillis?t.toMillis():(t&&t.seconds?t.seconds*1000:0);
+  snaps.forEach(q=>q.docs.forEach(d=>{const x=d.data(),p=tot[x.uid];if(!p)return;if(ms(x.ts)<((joined[x.uid]||{}).joined||0))return;p.pts+=x.points||0;p.played++;if(x.name)p.name=x.name}));
+  ids.forEach(u=>{const since=(joined[u]||{}).joined||0;tot[u].pts+=atts.filter(a=>(a.uid===u||a.setter===u)&&ms(a.ts)>=since).reduce((s,a)=>s+attemptDelta(a,u),0)});
+  return Object.values(tot).filter(p=>!isHeld(lucky,p.uid)).map(p=>({...p,pts:Math.max(0,p.pts)})).sort((a,b)=>b.pts-a.pts||a.name.localeCompare(b.name))
+    .map(p=>({uid:p.uid,name:p.name,pts:p.pts,meta:`${p.played} played`}));
+}
+
+function inviteBanner(){
+  if(!myInvites.length)return '';
+  return myInvites.map(v=>`<div class="note invite" data-inv="${v.id}"><span><strong>${esc(v.from)}</strong> invited you to join <strong>${esc(v.leagueName)}</strong>.</span>
+    <span class="ch-act"><button class="btn primary small" data-acc="${v.id}">Join</button><button class="btn small" data-dec="${v.id}">No thanks</button></span></div>`).join('');
+}
+function mountInvites(sh,after){
+  sh.querySelectorAll('[data-acc]').forEach(b=>b.addEventListener('click',async()=>{
+    const v=myInvites.find(x=>x.id===b.dataset.acc);b.disabled=true;
+    try{
+      const lref=db.collection('leagues').doc(v.league), lg=await lref.get();
+      if(!lg.exists){await db.collection('invites').doc(v.id).delete().catch(()=>{});toast('That league no longer exists');await loadLeagues();after();return}
+      const bt=db.batch();
+      bt.update(lref,{members:FV().arrayUnion(user.uid)});
+      bt.set(db.collection('members').doc(v.league+'_'+user.uid),{league:v.league,uid:user.uid,name:player.name,joined:FV().serverTimestamp()});
+      bt.delete(db.collection('invites').doc(v.id));
+      await bt.commit();
+      toast(`You've joined ${v.leagueName}`);setScope(v.league);await loadLeagues();after();
+    }catch(e){console.warn(e);toast(e.code==='permission-denied'?'Blocked by the database rules.':'Could not join. Try again.');b.disabled=false}
+  }));
+  sh.querySelectorAll('[data-dec]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;
+    try{await db.collection('invites').doc(b.dataset.dec).delete();await loadLeagues();after()}catch(e){console.warn(e);b.disabled=false;toast('Could not do that. Try again.')}
+  }));
+}
+
+function showLeagues(){
+  openSheet(`<h2>Leagues</h2><div id="lgBody" class="stack"><p class="muted">Loading…</p></div>`,sh=>fillLeagues(sh.querySelector('#lgBody')));
+}
+async function fillLeagues(el){
+  await authReady;
+  if(!db){el.innerHTML='<p class="muted">Leagues are offline right now.</p>';return}
+  if(!user){el.innerHTML=`<p>Make a private league for friends, family or work, with its own tables. Pick a nickname first.</p>`+signInHTML();mountSignIn(el,()=>showLeagues());return}
+  try{if(!player)await loadPlayer();await loadLeagues()}
+  catch(e){console.warn(e);el.innerHTML=`<p class="muted">${e.code==='permission-denied'?'Leagues are blocked by the database rules. The game owner needs to update them.':'Could not load leagues. Check your connection.'}</p>`;return}
+  el.innerHTML=`${inviteBanner()}
+    <p class="muted">Private leagues have their own This code, Today and All time tables. Everyone starts on 0 when they join.</p>
+    ${myLeagues.length?`<ul class="ch-list">${myLeagues.map(l=>`<li class="ch"><div class="ch-top"><strong>${esc(l.name)}</strong><span class="chip">${l.members.length} player${l.members.length>1?'s':''}</span></div>
+      <div class="ch-meta">${l.owner===user.uid?'You run this league':`Run by ${esc(l.ownerName)}`}</div>
+      <div class="ch-act"><button class="btn primary small" data-view="${l.id}">Tables</button><button class="btn small" data-manage="${l.id}">${l.owner===user.uid?'Manage':'Members'}</button></div></li>`).join('')}</ul>`:'<p class="muted">You aren\'t in any leagues yet.</p>'}
+    <form class="form" id="lgNew" novalidate>
+      <div class="label">Start a league</div>
+      <div class="field"><label for="lgName">League name</label><div class="inline"><input id="lgName" maxlength="30" placeholder="e.g. The Depot Lot"><button class="btn small" type="submit">Create</button></div></div>
+      <div class="err" id="lgErr"></div>
+    </form>`;
+  mountInvites(el,()=>fillLeagues(el));
+  el.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{setScope(b.dataset.view);showBoard('today')}));
+  el.querySelectorAll('[data-manage]').forEach(b=>b.addEventListener('click',()=>showLeague(b.dataset.manage)));
+  el.querySelector('#lgNew').addEventListener('submit',async e=>{
+    e.preventDefault();const name=el.querySelector('#lgName').value.trim(), err=el.querySelector('#lgErr');err.textContent='';
+    if(name.length<2){err.textContent='Give it a name of at least 2 letters.';return}
+    if(myLeagues.filter(l=>l.owner===user.uid).length>=5){err.textContent='You can run up to 5 leagues.';return}
+    try{
+      const ref=db.collection('leagues').doc(), bt=db.batch();
+      bt.set(ref,{name,owner:user.uid,ownerName:player.name,members:[user.uid],created:FV().serverTimestamp()});
+      bt.set(db.collection('members').doc(ref.id+'_'+user.uid),{league:ref.id,uid:user.uid,name:player.name,joined:FV().serverTimestamp()});
+      await bt.commit();
+      toast(`${name} created`);await loadLeagues();showLeague(ref.id);
+    }catch(x){console.warn(x);err.textContent=x.code==='permission-denied'?'Blocked by the database rules. The game owner needs to update them.':'Could not create it. Check your connection.'}
+  });
+}
+async function showLeague(id){
+  openSheet(`<h2>League</h2><div id="lgOne" class="stack"><p class="muted">Loading…</p></div>`,sh=>fillLeague(sh.querySelector('#lgOne'),id));
+}
+async function fillLeague(el,id){
+  let lg,joined,inv=[];
+  try{
+    const d=await db.collection('leagues').doc(id).get();
+    if(!d.exists){el.innerHTML='<p class="muted">This league no longer exists.</p>';return}
+    lg={id,...d.data()};joined=await leagueJoined(lg);
+    if(lg.owner===user.uid)inv=(await db.collection('invites').where('league','==',id).get()).docs.map(x=>({id:x.id,...x.data()}));
+  }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the league. Check your connection.</p>';return}
+  const own=lg.owner===user.uid;
+  const sh=el.closest('.sheet');sh.querySelector('h2').textContent=lg.name;
+  el.innerHTML=`<div class="label">Members (${lg.members.length})</div>
+    <ul class="mlist">${lg.members.map(u=>`<li><span>${esc((joined[u]||{}).name||'Player')}${u===lg.owner?'<span class="tag">runs it</span>':''}${u===user.uid?'<span class="tag">you</span>':''}</span>${own&&u!==user.uid?`<button class="link" data-rm="${u}">Remove</button>`:''}</li>`).join('')}</ul>
+    ${own?`${inv.length?`<div class="label">Invited, waiting to join</div><ul class="mlist">${inv.map(v=>`<li><span>${esc(v.name)}</span><button class="link" data-cancel="${v.id}">Cancel</button></li>`).join('')}</ul>`:''}
+      <form class="form" id="lgInv" novalidate><div class="field"><label for="invName">Invite a player by nickname</label><div class="inline"><input id="invName" maxlength="16" autocapitalize="off" spellcheck="false" placeholder="Their Tally nickname"><button class="btn small" type="submit">Invite</button></div></div><div class="err" id="invErr"></div><div class="ok-msg" id="invOk" hidden></div></form>`:''}
+    <div class="actions"><button class="btn primary" id="lgTables">See tables</button><button class="btn" id="lgBack">All leagues</button></div>
+    ${own?`<button class="link" id="lgDel" style="color:var(--bad)">Delete this league</button>`:`<button class="link" id="lgLeave" style="color:var(--bad)">Leave this league</button>`}`;
+  el.querySelector('#lgTables').addEventListener('click',()=>{setScope(id);showBoard('today')});
+  el.querySelector('#lgBack').addEventListener('click',showLeagues);
+  const redo=()=>fillLeague(el,id);
+  const sure=(b,label)=>{if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent=label;return false}return true};
+  el.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!sure(b,'Tap again to remove'))return;
+    try{const bt=db.batch();bt.update(db.collection('leagues').doc(id),{members:FV().arrayRemove(b.dataset.rm)});bt.delete(db.collection('members').doc(id+'_'+b.dataset.rm));await bt.commit();toast('Removed');redo()}
+    catch(e){console.warn(e);toast('Could not remove them. Try again.')}
+  }));
+  el.querySelectorAll('[data-cancel]').forEach(b=>b.addEventListener('click',async()=>{
+    try{await db.collection('invites').doc(b.dataset.cancel).delete();redo()}catch(e){console.warn(e);toast('Could not cancel. Try again.')}
+  }));
+  const f=el.querySelector('#lgInv');
+  if(f)f.addEventListener('submit',async e=>{
+    e.preventDefault();const n=el.querySelector('#invName').value.trim(), err=el.querySelector('#invErr'), ok=el.querySelector('#invOk');err.textContent='';ok.hidden=true;
+    if(slug(n).length<2){err.textContent='Type their nickname.';return}
+    try{
+      const nd=await db.collection('names').doc(slug(n)).get();
+      if(!nd.exists){err.textContent=`No player called "${n}". Check the spelling.`;return}
+      const uid=nd.data().uid;
+      if(lg.members.includes(uid)){err.textContent=`${n} is already in this league.`;return}
+      if(inv.some(v=>v.uid===uid)){err.textContent=`${n} has already been invited.`;return}
+      if(lg.members.length+inv.length>=LG_MAX){err.textContent=`Leagues can have up to ${LG_MAX} players.`;return}
+      const pd=await db.collection('players').doc(uid).get();
+      await db.collection('invites').doc(id+'_'+uid).set({league:id,leagueName:lg.name,uid,name:pd.exists?pd.data().name:n,from:player.name,ts:FV().serverTimestamp()});
+      toast(`Invite sent to ${n}`);redo();
+    }catch(x){console.warn(x);err.textContent=x.code==='permission-denied'?'Blocked by the database rules.':'Could not send the invite. Try again.'}
+  });
+  const del=el.querySelector('#lgDel');
+  if(del)del.addEventListener('click',async()=>{
+    if(!sure(del,'Tap again to delete the league for everyone'))return;
+    try{const bt=db.batch();lg.members.forEach(u=>bt.delete(db.collection('members').doc(id+'_'+u)));inv.forEach(v=>bt.delete(db.collection('invites').doc(v.id)));bt.delete(db.collection('leagues').doc(id));await bt.commit();
+      if(lbScope===id)setScope('');toast('League deleted');showLeagues()}
+    catch(e){console.warn(e);toast('Could not delete it. Try again.')}
+  });
+  const lv=el.querySelector('#lgLeave');
+  if(lv)lv.addEventListener('click',async()=>{
+    if(!sure(lv,'Tap again to leave'))return;
+    try{const bt=db.batch();bt.update(db.collection('leagues').doc(id),{members:FV().arrayRemove(user.uid)});bt.delete(db.collection('members').doc(id+'_'+user.uid));await bt.commit();
+      if(lbScope===id)setScope('');toast(`You've left ${lg.name}`);showLeagues()}
+    catch(e){console.warn(e);toast('Could not leave. Try again.')}
+  });
+}
+
+let lbTab='today', boardLeaguesLoaded=false;
 function showBoard(tab){
   if(tab)lbTab=tab;
-  const tabs=`<div class="tabs" role="tablist" style="--tabs:4">${[['today','This code'],['day','Today'],['all','All time'],['me','My stats']].map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
+  const lg=scopeLeague();
+  if(lg&&lbTab==='me')lbTab='today';
+  const tabList=lg?[['today','This code'],['day','Today'],['all','All time']]:[['today','This code'],['day','Today'],['all','All time'],['me','My stats']];
+  const scope=user?`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],...myLeagues.map(l=>[l.id,l.name])].map(([v,l])=>`<option value="${v}"${v===(lg?lg.id:'')?' selected':''}>${esc(l)}</option>`).join('')}</select><button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button></div>`:'';
+  const tabs=`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><button class="link" id="signOut">Sign out</button></div>`:'';
   openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>`,sh=>{
     sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
+    const sc=sh.querySelector('#lbScope');if(sc)sc.addEventListener('change',()=>{setScope(sc.value);showBoard()});
+    const lb=sh.querySelector('#lbLeagues');if(lb)lb.addEventListener('click',showLeagues);
+    mountInvites(sh,()=>showBoard());
+    if(user&&!boardLeaguesLoaded){boardLeaguesLoaded=true;loadLeagues().then(()=>{if(modal&&$('lbBody'))showBoard()}).catch(e=>console.warn(e))}
     const so=sh.querySelector('#signOut');if(so)so.addEventListener('click',async()=>{await auth.signOut();user=null;player=null;await switchUser();toast('Signed out');showBoard()});
     fillBoard(sh.querySelector('#lbBody'));
   });
@@ -900,8 +1081,11 @@ async function fillBoard(el){
   if(lbTab==='me'){el.innerHTML=myStatsHTML();return}
   if(!db){el.innerHTML='<p class="muted">The leaderboard is offline right now.</p>';return}
   let rows=[], held=0;
+  const lg=scopeLeague();
   try{
-    if(lbTab==='today'){
+    if(lg&&lbTab==='all'){
+      rows=await leagueAllTime(lg,await loadLucky().catch(()=>({})));
+    }else if(lbTab==='today'){
       const [q,lucky]=await Promise.all([db.collection('scores').where('day','==',RKEY).get(),loadLucky(true).catch(()=>({}))]);
       const t=d=>d.secs||1e9;
       held=q.docs.map(d=>d.data()).filter(d=>isHeld(lucky,d.uid)).length;
@@ -930,6 +1114,7 @@ async function fillBoard(el){
         .map(d=>({...d,meta:`${d.played} played`}));
     }
   }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
+  if(lg){if(lbTab!=='all')rows=rows.filter(r=>lg.members.includes(r.uid));held=0}
   let html='';
   if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":lbTab==='day'?"No scores yet today. Today's first code starts at 6am.":'No scores yet.'}</p>`;
   else{
@@ -938,6 +1123,7 @@ async function fillBoard(el){
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
   if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: 6am and 8pm.</p>`+html;
+  if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from codes and challenges since each player joined ${esc(lg.name)}.</p>`+html;
   if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
   if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
   if(!user)html+=`<div class="label" style="margin-top:18px">Get on the board</div>`+signInHTML();
@@ -963,7 +1149,7 @@ function chKey(id){let h=2166136261;for(const c of id)h=Math.imul(h^c.charCodeAt
 function encCode(code,id){const r=rng(chKey(id));return 't1'+[...code].map(d=>(+d+Math.floor(r()*10))%10).join('')}
 function decCode(c,id){const r=rng(chKey(id));return [...c.slice(2)].map(d=>(+d-Math.floor(r()*10)+10)%10).join('')}
 /* The clue is always worked out by the game from the real code, so it can't be wrong or misleading. */
-function chClue(c){return mathsClue([...decCode(c.c,c.id)].map(Number),rng(c.cs|0))}
+function chClue(c){return c.clue===false?'No clue on this one. Good luck!':mathsClue([...decCode(c.c,c.id)].map(Number),rng(c.cs|0))}
 
 let attemptsCache=null, attemptsAt=0;
 async function loadAttempts(force){
@@ -973,12 +1159,27 @@ async function loadAttempts(force){
   attemptsCache=q.docs.map(d=>({id:d.id,...d.data()}));attemptsAt=Date.now();
   return attemptsCache;
 }
-/* An attempt that's still being played counts as a loss until it's won. */
+/* How each attempt moves points:
+   win      - first to crack it (or cracked it later while the setter could still pay): player +stake, setter -stake
+   void     - cracked it, but the setter didn't have enough points to pay: nobody gains or loses
+   loss     - didn't crack it while the challenge was open: player -stake, setter +stake
+   lateloss - didn't crack it after someone else already had (challenge closed): player -stake, nobody gains
+   playing  - still in play: counts as a loss for the player only, so quitting doesn't help */
+function attemptOutcome(a){
+  if(a.status!=='done')return 'playing';
+  if(a.won)return (a.late?a.pay===true:a.pay!==false)?'win':'void';
+  return a.late?'lateloss':'loss';
+}
 function attemptDelta(a,uid){
   if(!uid)return 0;
-  if(a.uid===uid)return a.won?a.stake:-a.stake;
-  if(a.setter===uid)return a.won?-a.stake:a.stake;
+  const o=attemptOutcome(a);
+  if(a.uid===uid)return o==='win'?a.stake:o==='void'?0:-a.stake;
+  if(a.setter===uid)return o==='win'?-a.stake:o==='loss'?a.stake:0;
   return 0;
+}
+async function pointsOf(uid){
+  const p=await db.collection('players').doc(uid).get();
+  return Math.max(0,(p.exists?p.data().total:0)+chNet(uid,attemptsCache));
 }
 function chNet(uid,atts){return (atts||[]).reduce((s,a)=>s+attemptDelta(a,uid),0)}
 function myPoints(){return Math.max(0,(player?player.total:0)+chNet(user&&user.uid,attemptsCache))}
@@ -1015,17 +1216,21 @@ async function fillChallenges(el){
   }catch(e){console.warn(e);el.innerHTML=`<p class="muted">${e.code==='permission-denied'?'Challenges are blocked by the database rules. The game owner needs to update them.':'Could not load challenges. Check your connection.'}</p>`}
 }
 
+function chipFor(a){
+  const o=attemptOutcome(a);
+  return o==='win'?`<span class="chip good">Cracked it ${signed(a.stake)}</span>`:o==='void'?`<span class="chip">Cracked it · no payout</span>`:`<span class="chip bad">Beaten ${signed(-a.stake)}</span>`;
+}
 function chRow(c,mineAtt){
   let action='';
   if(c.setter===user.uid){
     action=`<span class="chip">Your challenge</span><button class="btn small" data-share="${c.id}">Copy link</button>`;
   }else if(mineAtt){
     action=mineAtt.status==='playing'?`<button class="btn primary small" data-resume="${c.id}">Resume</button>`:
-      mineAtt.won?`<span class="chip good">Cracked it ${signed(c.stake)}</span>`:`<span class="chip bad">Beaten ${signed(-c.stake)}</span>`;
+      chipFor(mineAtt);
   }else action=`<button class="btn primary small" data-accept="${c.id}">Take it on</button>`;
   return `<li class="ch${chFocus===c.id?' focus':''}" id="ch-${c.id}">
     <div class="ch-top"><strong>${esc(c.setterName)}</strong><span class="stake">${c.stake} pts</span></div>
-    <div class="ch-meta">Crack it in ${c.target} · ${c.tries} tried · ${c.cracks} cracked · ${timeLeft(c.expires)}</div>
+    <div class="ch-meta">Crack it in ${c.target} · ${c.tries} tried · ${timeLeft(c.expires)}${c.clue===false?' · no clue':''}</div>
     <div class="ch-clue">“${esc(chClue(c))}”</div>
     <div class="ch-act">${action}</div>
     <div class="ch-confirm" hidden></div>
@@ -1051,7 +1256,7 @@ async function fillOpen(el){
   }
   const myAtt=id=>attemptsCache.find(a=>a.ch===id&&a.uid===user.uid);
   const pts=myPoints(), today=await takenToday();
-  el.innerHTML=`${focusNote}<p class="muted">You have <strong>${pts} pts</strong> to play with. Crack a code within the target to take the stake. Miss, and the setter takes it from you.</p>
+  el.innerHTML=`${focusNote}<p class="muted">You have <strong>${pts} pts</strong> to play with. First to crack a code within the target takes the stake. Miss, and the setter takes yours.</p>
     <div class="quota"><span>Taken on today</span><b>${today} of ${CH_PER_DAY}</b></div>`+
     (list.length?`<ul class="ch-list">${list.map(c=>chRow(c,myAtt(c.id))).join('')}</ul>`:
       `<p class="muted">No open challenges right now. Set one and share the link.</p><button class="btn primary" id="goSet">Set a challenge</button>`);
@@ -1060,7 +1265,7 @@ async function fillOpen(el){
     const c=list.find(x=>x.id===b.dataset.accept), box=b.closest('.ch').querySelector('.ch-confirm');
     if(today>=CH_PER_DAY){box.innerHTML=`<p class="err">You've taken on ${CH_PER_DAY} challenges today. Come back tomorrow for more.</p>`;box.hidden=false;return}
     if(myPoints()<c.stake){box.innerHTML=`<p class="err">You need ${c.stake} pts to take this on. Play today's code to earn some.</p>`;box.hidden=false;return}
-    box.innerHTML=`<p>You're putting <strong>${c.stake} pts</strong> on the line. Crack it in ${c.target} or fewer to win ${c.stake} from ${esc(c.setterName)}. If you start and stop, it counts as a miss.</p>
+    box.innerHTML=`<p>You're putting <strong>${c.stake} pts</strong> on the line. Crack it in ${c.target} or fewer to win ${c.stake} from ${esc(c.setterName)}. If someone cracks it before you finish, you only win if ${esc(c.setterName)} still has the points to pay. If you start and stop, it counts as a miss.</p>
       <div class="actions"><button class="btn primary" data-go>Accept and play</button><button class="btn" data-cancel>Cancel</button></div><p class="err"></p>`;
     box.hidden=false;
     box.querySelector('[data-cancel]').addEventListener('click',()=>{box.hidden=true});
@@ -1083,31 +1288,45 @@ async function acceptChallenge(c){
   const aref=db.collection('attempts').doc(c.id+'_'+user.uid), cref=db.collection('challenges').doc(c.id);
   const n=await takenToday();
   if(n>=CH_PER_DAY)throw{code:'limit'};
-  const att={ch:c.id,uid:user.uid,name:player.name,setter:c.setter,sname:c.setterName,stake:c.stake,target:c.target,day:DAY,g:[],status:'playing',won:false,ts:FV().serverTimestamp()};
+  const att={ch:c.id,uid:user.uid,name:player.name,setter:c.setter,sname:c.setterName,stake:c.stake,target:c.target,round:c.round||1,day:DAY,g:[],status:'playing',won:false,ts:FV().serverTimestamp()};
   const b=db.batch();b.set(aref,att);b.update(cref,{tries:FV().increment(1)});b.set(limitRef(),{uid:user.uid,day:DAY,n:n+1});
   await b.commit();
   attemptsAt=0;
   startChallenge({...c,tries:c.tries+1},att);
 }
 function startChallenge(c,att){
-  S={mode:'challenge',ch:c,code:decCode(c.c,c.id),clue:chClue(c),guesses:(att&&att.g)||[],current:'',
+  S={mode:'challenge',ch:c,att:att||{},outcome:null,code:decCode(c.c,c.id),clue:chClue(c),guesses:(att&&att.g)||[],current:'',
      done:!!att&&att.status==='done',won:!!att&&!!att.won,max:c.target,runFrom:0,
      elapsed:(store.get('tally.chclock.'+c.id)||{}).elapsed||0,secs:(att&&att.secs)||(store.get('tally.chclock.'+c.id)||{}).secs||0};
+  if(att&&att.status==='done')S.outcome={late:!!att.late,pay:att.pay,o:attemptOutcome(att)};
   closeSheet();draw();
   if(S.done)showResult();else toast(`Crack ${c.setterName}'s code in ${c.target}`);
 }
 let saveQ=Promise.resolve();
 function saveAttempt(){
-  const snap={g:S.guesses.slice(),status:S.done?'done':'playing',won:S.won,...(S.done?{secs:S.secs}:{})}, c=S.ch;
+  const c=S.ch, done=S.done, g=S.guesses.slice(), won=S.won, secs=S.secs, att=S.att;
   saveQ=saveQ.then(async()=>{
-    const aref=db.collection('attempts').doc(c.id+'_'+user.uid);
-    const data={...snap,ts:FV().serverTimestamp()};
+    const aref=db.collection('attempts').doc(c.id+'_'+user.uid), cref=db.collection('challenges').doc(c.id);
     try{
-      if(snap.won){const b=db.batch();b.update(aref,data);b.update(db.collection('challenges').doc(c.id),{cracks:FV().increment(1)});await b.commit()}
-      else await aref.update(data);
+      if(!done){await aref.update({g,status:'playing',won:false,ts:FV().serverTimestamp()});return}
+      /* Finished. If they cracked it, check the setter can still pay the stake. */
+      let pay=true;
+      if(won){try{await loadAttempts(true);pay=(await pointsOf(c.setter))>=c.stake}catch(e){console.warn(e)}}
+      const res=await db.runTransaction(async tx=>{
+        const cd=(await tx.get(cref)).data()||{};
+        const live=cd.open===true&&(cd.round||1)===(att.round||1);
+        const data={g,status:'done',won,late:!live,secs:secs||0,ts:FV().serverTimestamp()};
+        if(won)data.pay=pay;
+        tx.update(aref,data);
+        /* First to crack it: the challenge pauses until the setter re-opens or closes it. */
+        if(won)tx.update(cref,live?{cracks:FV().increment(1),open:false,paused:true}:{cracks:FV().increment(1)});
+        return {late:!live,pay};
+      });
+      S.outcome={...res,o:attemptOutcome({status:'done',won,late:res.late,pay:won?res.pay:undefined})};
       attemptsAt=0;
-    }catch(e){console.warn(e);toast("Couldn't save that guess. Check your connection.")}
+    }catch(e){console.warn(e);toast("Couldn't save that. Check your connection.")}
   });
+  return saveQ;
 }
 
 function fillSet(el){
@@ -1116,7 +1335,7 @@ function fillSet(el){
   if(pts<1){el.innerHTML=`<p>You need some points to stake before you can set a challenge.</p><p class="muted">Play today's code to earn up to 10 points, then come back.</p>`;return}
   const maxStake=Math.min(10,pts);
   el.innerHTML=`<form class="form" id="chForm" novalidate>
-    <p class="muted">Choose a code for others to crack. If they crack it within your target, they take your stake. If not, you take theirs. You have <strong>${pts} pts</strong>.</p>
+    <p class="muted">Choose a code for others to crack. The first to crack it within your target takes your stake, and the challenge pauses so you can re-open or close it. Anyone who misses gives you their stake. You have <strong>${pts} pts</strong>.</p>
     <div class="field"><label for="chCode">Your 5-digit code</label><input id="chCode" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="e.g. 40719" class="codein"></div>
     <div class="grid2">
       <div class="field"><label for="chTarget">Crack it in</label><select id="chTarget">${[3,4,5,6,7].map(n=>`<option value="${n}"${n===4?' selected':''}>${n} guesses</option>`).join('')}</select></div>
@@ -1139,11 +1358,11 @@ function fillSet(el){
     const btn=el.querySelector('#chMake');btn.disabled=true;btn.textContent='Setting…';
     try{
       const mine=await db.collection('challenges').where('setter','==',user.uid).get();
-      const open=mine.docs.filter(d=>d.data().open&&d.data().expires>Date.now()).length;
+      const open=mine.docs.filter(d=>(d.data().open||d.data().paused)&&d.data().expires>Date.now()).length;
       if(open>=CH_MAX_OPEN){err.textContent=`You already have ${CH_MAX_OPEN} challenges open. Close one under Mine first.`;btn.disabled=false;btn.textContent='Set challenge';return}
       const ref=db.collection('challenges').doc();
       await ref.set({setter:user.uid,setterName:player.name,c:encCode(c,ref.id),cs:seed,target:t,stake:s,
-        created:FV().serverTimestamp(),expires:Date.now()+CH_DAYS*864e5,open:true,tries:0,cracks:0});
+        created:FV().serverTimestamp(),expires:Date.now()+CH_DAYS*864e5,open:true,paused:false,round:1,clue:true,tries:0,cracks:0});
       el.querySelector('#chForm').hidden=true;
       shareChallengeBox(el.querySelector('#chDone'),{id:ref.id,target:t,stake:s},true);
     }catch(x){console.warn(x);err.textContent=x.code==='permission-denied'?'Blocked by the database rules. The game owner needs to update them.':'Could not set it. Check your connection.';btn.disabled=false;btn.textContent='Set challenge'}
@@ -1165,33 +1384,68 @@ async function fillMine(el){
   const net=chNet(user.uid,attemptsCache), now=Date.now();
   const setRows=mine.map(c=>{
     const live=c.open&&c.expires>now;
+    if(c.paused&&c.expires>now){
+      const w=attemptsCache.find(a=>a.ch===c.id&&a.won&&!a.late&&(a.round||1)===(c.round||1));
+      const cNet=attemptsCache.filter(a=>a.ch===c.id).reduce((s,a)=>s+attemptDelta(a,user.uid),0);
+      const pts=myPoints(), maxStake=Math.min(10,pts);
+      return `<li class="ch focus"><div class="ch-top"><strong>Code ${decCode(c.c,c.id)}</strong><span class="stake ${cNet>0?'good':cNet<0?'bad':''}">${signed(cNet)} pts</span></div>
+        <div class="note">${w?`<strong>${esc(w.name)}</strong> cracked it in ${(w.g||[]).length}${w.pay===false?", but you didn't have the points to pay out":` and took ${w.stake} pts`}.`:'Someone cracked it.'} It's paused. Re-open it or close it?</div>
+        ${maxStake>=1?`<div class="grid3">
+          <div class="field"><label for="ro-t-${c.id}">Crack it in</label><select id="ro-t-${c.id}">${[3,4,5,6,7].map(n=>`<option value="${n}"${n===c.target?' selected':''}>${n} guesses</option>`).join('')}</select></div>
+          <div class="field"><label for="ro-s-${c.id}">Stake</label><select id="ro-s-${c.id}">${Array.from({length:maxStake},(_,i)=>i+1).map(n=>`<option value="${n}"${n===Math.min(c.stake,maxStake)?' selected':''}>${n} pts</option>`).join('')}</select></div>
+        </div>
+        <label class="check"><input type="checkbox" id="ro-c-${c.id}" ${c.clue!==false?'checked':''}> Show a clue</label>`:`<p class="muted">You need at least 1 point to re-open it.</p>`}
+        <p class="muted" style="font-size:13px">Anyone who's already played it can't play it again.</p>
+        <div class="ch-act">${maxStake>=1?`<button class="btn primary small" data-reopen="${c.id}">Re-open</button>`:''}<button class="btn small" data-close-ch="${c.id}">Close it</button></div>
+      </li>`;
+    }
     const cNet=attemptsCache.filter(a=>a.ch===c.id).reduce((s,a)=>s+attemptDelta(a,user.uid),0);
     return `<li class="ch"><div class="ch-top"><strong>Code ${decCode(c.c,c.id)}</strong><span class="stake ${cNet>0?'good':cNet<0?'bad':''}">${signed(cNet)} pts</span></div>
-      <div class="ch-meta">Crack it in ${c.target} · stake ${c.stake} · ${c.tries} tried · ${c.cracks} cracked · ${live?timeLeft(c.expires):'closed'}</div>
+      <div class="ch-meta">Crack it in ${c.target} · stake ${c.stake} · ${c.tries} tried · ${c.cracks} cracked · ${live?timeLeft(c.expires):'closed'}${c.clue===false?' · no clue':''}</div>
       <div class="ch-clue">“${esc(chClue(c))}”</div>
       ${live?`<div class="ch-act"><button class="btn small" data-share="${c.id}">Copy link</button><button class="btn small" data-close-ch="${c.id}">Close it</button></div><div data-sharebox="${c.id}"></div>`:''}
     </li>`}).join('');
-  const takeRows=taken.map(a=>`<li class="ch"><div class="ch-top"><strong>${esc(a.sname||'A player')}'s code</strong><span class="stake ${a.won?'good':'bad'}">${a.status==='playing'?'in play':signed(a.won?a.stake:-a.stake)+' pts'}</span></div>
-      <div class="ch-meta">Target ${a.target} · ${a.won?`cracked in ${a.g.length}${a.secs?` · ${fmtTime(a.secs)}`:''}`:a.status==='playing'?`${a.g.length} guesses so far`:'not cracked'}</div></li>`).join('');
+  const takeRows=taken.map(a=>{const d=attemptDelta(a,user.uid),o=attemptOutcome(a);return `<li class="ch"><div class="ch-top"><strong>${esc(a.sname||'A player')}'s code</strong><span class="stake ${d>0?'good':d<0?'bad':''}">${o==='playing'?'in play':signed(d)+' pts'}</span></div>
+      <div class="ch-meta">Target ${a.target} · ${a.won?`cracked in ${a.g.length}${a.secs?` · ${fmtTime(a.secs)}`:''}${o==='void'?' · setter couldn\'t pay':''}`:o==='playing'?`${a.g.length} guesses so far`:o==='lateloss'?'not cracked (someone got there first)':'not cracked'}</div>${o==='playing'?`<div class="ch-act"><button class="btn primary small" data-resume-mine="${a.ch}">Resume</button></div>`:''}</li>`}).join('');
   el.innerHTML=`<div class="nums two"><div><b>${signed(net)}</b><span>Challenge pts</span></div><div><b>${myPoints()}</b><span>Your total</span></div></div>
     <div class="label">Challenges you set</div>${setRows?`<ul class="ch-list">${setRows}</ul>`:'<p class="muted">None yet.</p>'}
     <div class="label">Challenges you took on</div>${takeRows?`<ul class="ch-list">${takeRows}</ul>`:'<p class="muted">None yet.</p>'}`;
   el.querySelectorAll('[data-share]').forEach(b=>b.addEventListener('click',()=>{const c=mine.find(x=>x.id===b.dataset.share);shareChallengeBox(el.querySelector(`[data-sharebox="${c.id}"]`),c,false);el.querySelector(`[data-sharebox="${c.id}"] [data-copy]`).click()}));
+  el.querySelectorAll('[data-resume-mine]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;
+    try{const d=await db.collection('challenges').doc(b.dataset.resumeMine).get();startChallenge({id:d.id,...d.data()},taken.find(a=>a.ch===d.id))}
+    catch(e){console.warn(e);b.disabled=false;toast('Could not open it. Try again.')}
+  }));
+  el.querySelectorAll('[data-reopen]').forEach(b=>b.addEventListener('click',async()=>{
+    const c=mine.find(x=>x.id===b.dataset.reopen);
+    const t=+el.querySelector('#ro-t-'+c.id).value, st=+el.querySelector('#ro-s-'+c.id).value, clue=el.querySelector('#ro-c-'+c.id).checked;
+    if(myPoints()<st){toast(`You need ${st} pts to stake that`);return}
+    b.disabled=true;b.textContent='Re-opening…';
+    try{
+      await db.collection('challenges').doc(c.id).update({open:true,paused:false,target:t,stake:st,clue,round:(c.round||1)+1,expires:Date.now()+CH_DAYS*864e5});
+      toast('Challenge re-opened');fillChallenges(el);
+    }catch(e){console.warn(e);toast(e.code==='permission-denied'?'Blocked by the database rules.':'Could not re-open it. Try again.');b.disabled=false;b.textContent='Re-open'}
+  }));
   el.querySelectorAll('[data-close-ch]').forEach(b=>b.addEventListener('click',async()=>{
     if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Tap again to close';return}
     b.disabled=true;
-    try{await db.collection('challenges').doc(b.dataset.closeCh).update({open:false});toast('Challenge closed');fillChallenges(el)}
+    try{await db.collection('challenges').doc(b.dataset.closeCh).update({open:false,paused:false});toast('Challenge closed');fillChallenges(el)}
     catch(e){console.warn(e);toast('Could not close it. Try again.');b.disabled=false}
   }));
 }
 
 function showChallengeResult(){
-  const c=S.ch, n=S.guesses.length;
+  if(!S.outcome&&user){saveQ.then(()=>{if(S.mode==='challenge')showChallengeResult()});return}
+  const c=S.ch, n=S.guesses.length, o=(S.outcome||{}).o||(S.won?'win':'loss');
+  const msg={win:`You win ${c.stake} pts from ${esc(c.setterName)}.`,
+    void:S.outcome&&S.outcome.late?`Someone cracked it before you, and ${esc(c.setterName)} hasn't enough points left to pay you. No points won or lost.`:`${esc(c.setterName)} hasn't enough points to pay out, so no points won or lost.`,
+    loss:`${esc(c.setterName)} takes ${c.stake} pts from you.`,
+    lateloss:`Someone cracked it before you. You lose your ${c.stake} pts stake.`}[o];
   const answer=[...S.code].map(d=>`<div class="tile ${S.won?'hit':'miss'}"><span class="d">${d}</span><span class="a"></span></div>`).join('');
   openSheet(`<h2>${S.won?`Cracked it in ${n}`:'Not this time'}</h2>
     <div><div class="label" style="margin-bottom:8px">${esc(c.setterName)}'s code</div><div class="answer">${answer}</div></div>
     ${S.secs?`<div class="timeline"><span class="label">Time taken</span><b>${fmtTime(S.secs)}</b></div>`:''}
-    <div class="note ${S.won?'ok':''}">${S.won?`You win ${c.stake} pts from ${esc(c.setterName)}.`:`${esc(c.setterName)} takes ${c.stake} pts from you.`}</div>
+    <div class="note ${o==='win'?'ok':o==='void'?'warn':''}">${msg}</div>
     <div class="actions"><button class="btn primary" id="shareBtn">Copy result</button><button class="btn" id="moreCh">More challenges</button></div>
     <div id="copyArea"></div>
     <div class="actions"><button class="btn" id="dailyBtn">Back to today's code</button></div>`,sh=>{
@@ -1210,7 +1464,7 @@ function untilMidnight(){const s=Math.max(0,Math.floor(msToNext()/1000));return 
 function shareText(){
   const n=S.remote?S.remote.guesses:S.guesses.length,sc=S.won?n:'X',pts=codePts(n);
   const head=S.mode==='daily'?`Tally No. ${ROUND}  ${sc}/7 · ${pts} pts${S.clueUsed?' · 💡':''}`:
-    S.mode==='challenge'?(S.won?`I cracked ${S.ch.setterName}'s Tally challenge in ${n}/${S.max} (+${S.ch.stake} pts)`:`${S.ch.setterName}'s Tally challenge beat me (X/${S.max})`):`Tally practice ${sc}/7`;
+    S.mode==='challenge'?(S.won?`I cracked ${S.ch.setterName}'s Tally challenge in ${n}/${S.max}${(S.outcome||{}).o==='void'?'':` (+${S.ch.stake} pts)`}`:`${S.ch.setterName}'s Tally challenge beat me (X/${S.max})`):`Tally practice ${sc}/7`;
   const rows=S.guesses.map(g=>score(g,S.code).state.map(s=>s==='hit'?'🟩':s==='near'?'🟨':'⬜').join(''));
   return [head+(S.secs?` · ⏱ ${fmtTime(S.secs)}`:''),...rows,SITE].join('\n');
 }
@@ -1275,10 +1529,12 @@ document.addEventListener('keydown',e=>{
 
 buildKeypad();startDaily();
 if(IS_BETA)$('betaTag').hidden=false;
-if(auth)auth.onAuthStateChanged(async u=>{user=u;if(!u)player=null;try{await switchUser()}catch(e){console.warn(e)}authReadyResolve();if(u)setTimeout(maybeAskPush,1500)});
+if(auth)auth.onAuthStateChanged(async u=>{user=u;if(!u)player=null;boardLeaguesLoaded=false;try{await switchUser()}catch(e){console.warn(e)}authReadyResolve();if(u)loadLeagues().catch(e=>console.warn(e));else{myLeagues=[];myInvites=[]}if(u)setTimeout(maybeAskPush,1500)});
 else authReadyResolve();
 const link=/^#c([A-Za-z0-9]{10,40})$/.exec(location.hash);
-if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
+const hashView=location.hash==='#mine'?'mine':location.hash==='#leagues'?'leagues':'';
+if(hashView){try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>authReady.then(()=>hashView==='mine'?showChallenges('mine'):showLeagues()),300)}
+if(hashView){}else if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
 else if(!prefs.seenHelp)setTimeout(showHelp,300);
 else authReady.then(()=>{if(S.mode==='daily'&&S.done&&!modal)setTimeout(showResult,300)});
 })();

@@ -93,12 +93,27 @@ for (const a of recent) {
   if (a.status !== 'done') continue;
   const setter = (await players()).find(d => d.uid === a.setter && d.mine !== false);
   if (!setter) continue;
-  const n = (a.g || []).length;
-  await send(setter, a.won
-    ? { title: `${a.name} cracked your code 😬`, body: `They got it in ${n} and take ${a.stake} pts from you. Set another to win them back.`, tag: `ch-${a.ch}-${a.uid}` }
-    : { title: `${a.name} couldn't crack your code 🎉`, body: `You win ${a.stake} pts. Nice code!`, tag: `ch-${a.ch}-${a.uid}` });
+  const n = (a.g || []).length, tag = `ch-${a.ch}-${a.uid}`, mine = SITE + '#mine';
+  let msg = null;
+  if (a.won && !a.late) msg = a.pay === false
+    ? { title: `${a.name} cracked your code`, body: `You didn't have the points to pay out. It's paused: open Tally to re-open it or close it.`, tag, url: mine }
+    : { title: `${a.name} cracked your code 😬`, body: `They got it in ${n} and take ${a.stake} pts. It's paused: open Tally to re-open it or close it.`, tag, url: mine };
+  else if (a.won && a.late && a.pay) msg = { title: `${a.name} cracked your code too`, body: `They take ${a.stake} pts from you.`, tag, url: mine };
+  else if (!a.won && !a.late) msg = { title: `${a.name} couldn't crack your code 🎉`, body: `You win ${a.stake} pts. Nice code!`, tag, url: mine };
+  if (msg) await send(setter, msg);
 }
 if (newest !== since) update.lastAttempt = newest;
+
+// ---- 2b. League invites ----
+const invSince = meta.lastInvite || admin.firestore.Timestamp.fromMillis(now - 30 * 60e3);
+const invites = (await db.collection('invites').where('ts', '>', invSince).get()).docs.map(d => d.data());
+let invNewest = invSince;
+for (const v of invites) {
+  if (v.ts && v.ts.toMillis() > invNewest.toMillis()) invNewest = v.ts;
+  const who = (await players()).find(d => d.uid === v.uid && d.mine !== false);
+  if (who) await send(who, { title: '🏆 League invite', body: `${v.from} invited you to join "${v.leagueName}". Open Tally to join.`, tag: `inv-${v.league}`, url: SITE + '#leagues' });
+}
+if (invNewest !== invSince) update.lastInvite = invNewest;
 
 // ---- 3. 6pm round-up: challenges waiting for you ----
 const today = `${lp.y}-${String(lp.m).padStart(2, '0')}-${String(lp.d).padStart(2, '0')}`;
