@@ -36,6 +36,15 @@ const finish = (u, cid, { won, late, pay, pause }) => () => {
   });
 };
 
+// ---- diagnostics
+await t('diag: D limits alone', () => setDoc(doc(db('D'), 'limits', `D_${DAY}`), { uid: 'D', day: DAY, n: 1 }), true);
+await t('diag: E attempt+tries no limits on ch3', () => { const d = db('E'), b = writeBatch(d);
+  b.set(doc(d, 'attempts', 'ch3_E'), { ch: 'ch3', uid: 'E', name: 'Eve', setter: 'A', sname: 'Ann', stake: 5, target: 4, round: 1, day: DAY, g: [], status: 'playing', won: false, ts: serverTimestamp() });
+  b.update(doc(d, 'challenges', 'ch3'), { tries: increment(1) }); return b.commit(); }, true);
+await t('diag: E full accept ch3 without round', () => { const d = db('E'), b = writeBatch(d);
+  b.set(doc(d, 'attempts', 'ch3_E'), { ch: 'ch3', uid: 'E', name: 'Eve', setter: 'A', sname: 'Ann', stake: 5, target: 4, day: DAY, g: [], status: 'playing', won: false, ts: serverTimestamp() });
+  b.update(doc(d, 'challenges', 'ch3'), { tries: increment(1) }); b.set(doc(d, 'limits', `E_${DAY}`), { uid: 'E', day: DAY, n: 1 }); return b.commit(); }, true);
+await t('diag: DAY value '+DAY, async () => true, true);
 // ---- challenge: create
 await t('new-style challenge create', () => setDoc(doc(db('A'), 'challenges', 'n1'), { setter: 'A', setterName: 'Ann', c: 't112345', cs: 1, target: 4, stake: 5, created: serverTimestamp(), expires: exp(), open: true, paused: false, round: 1, clue: true, tries: 0, cracks: 0 }), true);
 await t('old-style challenge create still works', () => setDoc(doc(db('A'), 'challenges', 'n2'), { setter: 'A', setterName: 'Ann', c: 't112345', cs: 1, target: 4, stake: 5, created: serverTimestamp(), expires: exp(), open: true, tries: 0, cracks: 0 }), true);
