@@ -6,7 +6,7 @@ service cloud.firestore {
     function dayNow() {
       return int(math.floor((request.time.toMillis() - 1792713600000) / 86400000)) + 1;
     }
-    // Two codes a day (8am and 8pm UK). Code No. 1 started 07:00 UTC on 23 Oct 2026.
+    // Two codes a day (6am and 8pm UK; it was 8am at first). Code No. 1 started 07:00 UTC on 23 Oct 2026.
     // Allow one code either side for clock changes. These scores use day = 100000 + code number.
     function roundNow() {
       return int(math.floor((request.time.toMillis() - 1792738800000) / 43200000)) + 1;
@@ -135,11 +135,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function chRound(d) { return d.get('round', 1); }
+
     match /challenges/{cid} {
       allow read: if true;
 
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['setter', 'setterName', 'c', 'cs', 'target', 'stake', 'created', 'expires', 'open', 'tries', 'cracks'])
+        && request.resource.data.keys().hasOnly(['setter', 'setterName', 'c', 'cs', 'target', 'stake', 'created', 'expires', 'open', 'paused', 'round', 'clue', 'tries', 'cracks'])
         && request.resource.data.setter == request.auth.uid
         && request.resource.data.setterName == get(playerPath(request.auth.uid)).data.name
         && request.resource.data.c is string && request.resource.data.c.size() == 7
@@ -154,14 +156,34 @@ service cloud.firestore {
         && request.resource.data.expires > request.time.toMillis()
         && request.resource.data.expires <= request.time.toMillis() + 8 * 86400000
         && request.resource.data.open == true
+        && request.resource.data.get('paused', false) == false
+        && request.resource.data.get('round', 1) == 1
+        && request.resource.data.get('clue', true) is bool
         && request.resource.data.tries == 0
         && request.resource.data.cracks == 0;
 
       allow update: if request.auth != null && (
         // The setter closes their own challenge.
         (resource.data.setter == request.auth.uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open'])
-          && request.resource.data.open == false)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open', 'paused'])
+          && request.resource.data.open == false
+          && request.resource.data.get('paused', false) == false)
+        ||
+        // The setter re-opens a paused challenge: a new round, new stake, guesses and clue choice.
+        (resource.data.setter == request.auth.uid
+          && resource.data.get('paused', false) == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open', 'paused', 'stake', 'target', 'clue', 'round', 'expires'])
+          && request.resource.data.open == true
+          && request.resource.data.paused == false
+          && request.resource.data.round == chRound(resource.data) + 1
+          && request.resource.data.stake is int
+          && request.resource.data.stake >= 1 && request.resource.data.stake <= 10
+          && request.resource.data.target is int
+          && request.resource.data.target >= 3 && request.resource.data.target <= 7
+          && request.resource.data.get('clue', true) is bool
+          && request.resource.data.expires is int
+          && request.resource.data.expires > request.time.toMillis()
+          && request.resource.data.expires <= request.time.toMillis() + 8 * 86400000)
         ||
         // A player accepts: tries goes up by one, in the same write as their attempt.
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tries'])
@@ -169,11 +191,22 @@ service cloud.firestore {
           && !exists(attPath(cid, request.auth.uid))
           && existsAfter(attPath(cid, request.auth.uid)))
         ||
-        // A player cracks it: cracks goes up by one, in the same write as their winning attempt.
+        // A player cracks it after someone else already had: just counts the crack.
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cracks'])
           && request.resource.data.cracks == resource.data.cracks + 1
           && get(attPath(cid, request.auth.uid)).data.status == 'playing'
           && getAfter(attPath(cid, request.auth.uid)).data.won == true)
+        ||
+        // The first player to crack it: the challenge pauses until the setter re-opens or closes it.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cracks', 'open', 'paused'])
+          && resource.data.open == true
+          && request.resource.data.cracks == resource.data.cracks + 1
+          && request.resource.data.open == false
+          && request.resource.data.paused == true
+          && get(attPath(cid, request.auth.uid)).data.status == 'playing'
+          && chRound(get(attPath(cid, request.auth.uid)).data) == chRound(resource.data)
+          && getAfter(attPath(cid, request.auth.uid)).data.won == true
+          && getAfter(attPath(cid, request.auth.uid)).data.get('late', false) == false)
       );
 
       allow delete: if false;
@@ -182,8 +215,9 @@ service cloud.firestore {
     match /attempts/{aid} {
       allow read: if true;
 
+      // One go per player per challenge, ever: the attempt's ID is the challenge plus the player.
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['ch', 'uid', 'name', 'setter', 'sname', 'stake', 'target', 'day', 'g', 'status', 'won', 'ts'])
+        && request.resource.data.keys().hasOnly(['ch', 'uid', 'name', 'setter', 'sname', 'stake', 'target', 'round', 'day', 'g', 'status', 'won', 'ts'])
         && request.resource.data.uid == request.auth.uid
         && aid == request.resource.data.ch + '_' + request.auth.uid
         && get(chPath(request.resource.data.ch)).data.open == true
@@ -193,6 +227,7 @@ service cloud.firestore {
         && request.resource.data.sname == get(chPath(request.resource.data.ch)).data.setterName
         && request.resource.data.stake == get(chPath(request.resource.data.ch)).data.stake
         && request.resource.data.target == get(chPath(request.resource.data.ch)).data.target
+        && chRound(request.resource.data) == chRound(get(chPath(request.resource.data.ch)).data)
         && request.resource.data.name == get(playerPath(request.auth.uid)).data.name
         && request.resource.data.day is int
         && getAfter(limitPath(request.auth.uid, request.resource.data.day)).data.n
@@ -205,16 +240,21 @@ service cloud.firestore {
         && getAfter(chPath(request.resource.data.ch)).data.tries == get(chPath(request.resource.data.ch)).data.tries + 1;
 
       // Guesses are added while playing. Once it's done, it's locked.
+      // "late" means someone else cracked it first (or it was re-opened) while this player was playing.
       allow update: if request.auth != null
         && resource.data.uid == request.auth.uid
         && resource.data.status == 'playing'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['g', 'status', 'won', 'secs', 'ts'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['g', 'status', 'won', 'secs', 'late', 'pay', 'ts'])
         && request.resource.data.g is list
         && request.resource.data.g.size() >= resource.data.g.size()
         && request.resource.data.g.size() <= resource.data.target
         && request.resource.data.status in ['playing', 'done']
         && (!('secs' in request.resource.data) || (request.resource.data.secs is int && request.resource.data.secs >= 0 && request.resource.data.secs <= 86400))
         && request.resource.data.ts == request.time
+        && (!('late' in request.resource.data)
+            || request.resource.data.late == !(get(chPath(resource.data.ch)).data.open == true
+                 && chRound(get(chPath(resource.data.ch)).data) == chRound(resource.data)))
+        && (!('pay' in request.resource.data) || request.resource.data.pay is bool)
         && (request.resource.data.status == 'playing'
             || request.resource.data.won == true
             || request.resource.data.g.size() == resource.data.target)
@@ -223,6 +263,77 @@ service cloud.firestore {
                 && getAfter(chPath(resource.data.ch)).data.cracks == get(chPath(resource.data.ch)).data.cracks + 1));
 
       allow delete: if false;
+    }
+
+    // ---------- Private leagues ----------
+    function leaguePath(id) { return /databases/$(database)/documents/leagues/$(id); }
+    function invitePath(id, uid) { return /databases/$(database)/documents/invites/$(id + '_' + uid); }
+    function memberPath(id, uid) { return /databases/$(database)/documents/members/$(id + '_' + uid); }
+
+    match /leagues/{lid} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['name', 'owner', 'ownerName', 'members', 'created'])
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.ownerName == get(playerPath(request.auth.uid)).data.name
+        && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 30
+        && request.resource.data.created == request.time
+        && existsAfter(memberPath(lid, request.auth.uid));
+
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+        && request.resource.data.members.size() <= 50
+        && (
+          // Accepting an invite: add yourself, and the invite is used up in the same write.
+          (request.resource.data.members.hasAll(resource.data.members)
+            && request.resource.data.members.size() == resource.data.members.size() + 1
+            && request.auth.uid in request.resource.data.members
+            && exists(invitePath(lid, request.auth.uid))
+            && !existsAfter(invitePath(lid, request.auth.uid))
+            && existsAfter(memberPath(lid, request.auth.uid)))
+          ||
+          // Leaving, or the owner removing someone: one member taken out (never the owner).
+          (resource.data.members.hasAll(request.resource.data.members)
+            && request.resource.data.members.size() == resource.data.members.size() - 1
+            && resource.data.owner in request.resource.data.members
+            && (resource.data.owner == request.auth.uid
+                || (request.auth.uid in resource.data.members && !(request.auth.uid in request.resource.data.members))))
+        );
+
+      allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
+    }
+
+    // When each member joined, so league tables count points from then on.
+    match /members/{mid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['league', 'uid', 'name', 'joined'])
+        && request.resource.data.uid == request.auth.uid
+        && mid == request.resource.data.league + '_' + request.auth.uid
+        && request.resource.data.name == get(playerPath(request.auth.uid)).data.name
+        && request.resource.data.joined == request.time
+        && request.auth.uid in getAfter(leaguePath(request.resource.data.league)).data.members;
+      allow delete: if request.auth != null
+        && (resource.data.uid == request.auth.uid
+            || get(leaguePath(resource.data.league)).data.owner == request.auth.uid);
+    }
+
+    match /invites/{iid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['league', 'leagueName', 'uid', 'name', 'from', 'ts'])
+        && iid == request.resource.data.league + '_' + request.resource.data.uid
+        && get(leaguePath(request.resource.data.league)).data.owner == request.auth.uid
+        && !(request.resource.data.uid in get(leaguePath(request.resource.data.league)).data.members)
+        && request.resource.data.leagueName == get(leaguePath(request.resource.data.league)).data.name
+        && request.resource.data.from == get(playerPath(request.auth.uid)).data.name
+        && request.resource.data.ts == request.time;
+      allow delete: if request.auth != null
+        && (resource.data.uid == request.auth.uid
+            || get(leaguePath(resource.data.league)).data.owner == request.auth.uid);
     }
   }
 }
