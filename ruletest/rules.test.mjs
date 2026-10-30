@@ -70,7 +70,8 @@ await t('old-style accept (no round)', () => { const d = db('B'), b = writeBatch
   b.set(doc(d, 'attempts', 'ch2_B'), { ch: 'ch2', uid: 'B', name: 'Bob', setter: 'A', sname: 'Ann', stake: 5, target: 4, day: DAY, g: [], status: 'playing', won: false, ts: serverTimestamp() });
   b.update(doc(d, 'challenges', 'ch2'), { tries: increment(1) }); b.set(doc(d, 'limits', `B_${DAY}`), { uid: 'B', day: DAY, n: 2 }); return b.commit(); }, true); // B accepted ch1 once
 await t('old-style crack (no late/pay, cracks only)', finish('B', 'ch2', { won: true, pause: false }), true);
-await t('old-style close (open only)', () => updateDoc(doc(db('A'), 'challenges', 'ch3'), { open: false }), true);
+await t('old-style close (open only)', () => updateDoc(doc(db('A'), 'challenges', 'n2'), { open: false }), true);
+await t('A closes paused (void) ch3', () => updateDoc(doc(db('A'), 'challenges', 'ch3'), { open: false, paused: false }), true);
 // ---- leagues
 const mkLeague = (withMember) => () => { const d = db('A'), b = writeBatch(d);
   b.set(doc(d, 'leagues', withMember ? 'L1' : 'L0'), { name: 'Depot Lot', owner: 'A', ownerName: 'Ann', members: ['A'], created: serverTimestamp() });
