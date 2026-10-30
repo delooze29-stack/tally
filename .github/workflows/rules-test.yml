@@ -1,0 +1,29 @@
+name: Rules test
+on:
+  push:
+    branches: [rules-test]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Install
+        working-directory: ruletest
+        run: npm install --no-audit --no-fund firebase-tools@13.29.1 @firebase/rules-unit-testing@3.0.4 firebase@10.12.2
+      - name: Run rules tests
+        working-directory: ruletest
+        run: npx firebase emulators:exec --only firestore --project demo-tally "node rules.test.mjs" || echo "EMULATOR ERROR" >> results.txt
+      - name: Save results
+        run: |
+          git config user.name Claude; git config user.email noreply@anthropic.com
+          cp ruletest/results.txt /tmp/results.txt || echo "no results" > /tmp/results.txt
+          git fetch origin rules-test-results || true
+          git checkout --orphan rules-test-results; git rm -rq --cached . ; cp /tmp/results.txt results.txt
+          git add results.txt; git commit -qm "Rules test results"; git push -f origin rules-test-results
