@@ -29,4 +29,5 @@ jobs:
         run: |
           head -1 results.txt | sed 's/^/::notice title=SUMMARY::/'
           grep '^FAIL' results.txt | head -40 | while read -r line; do echo "::warning title=T::${line}"; done
+          echo "::notice title=FAILNAMES::$(grep '^FAIL' results.txt | sed 's/ ::.*//; s/^FAIL //' | tr '\n' '|')"
           grep -c '^PASS' results.txt | sed 's/^/::notice title=PASSCOUNT::/'

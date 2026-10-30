@@ -22,8 +22,9 @@ const accept = (u, name, cid, round = 1, stake = 5, target = 4) => () => {
   const d = db(u), b = writeBatch(d);
   b.set(doc(d, 'attempts', `${cid}_${u}`), { ch: cid, uid: u, name, setter: 'A', sname: 'Ann', stake, target, round, day: DAY, g: [], status: 'playing', won: false, ts: serverTimestamp() });
   b.update(doc(d, 'challenges', cid), { tries: increment(1) });
-  return env.withSecurityRulesDisabled(async c => { const s = await getDoc(doc(c.firestore(), 'limits', `${u}_${DAY}`)); return s.exists() ? s.data().n : 0; })
-    .then(n => { b.set(doc(d, 'limits', `${u}_${DAY}`), { uid: u, day: DAY, n: n + 1 }); return b.commit(); });
+  let n = 0;
+  return env.withSecurityRulesDisabled(async c => { const s = await getDoc(doc(c.firestore(), 'limits', `${u}_${DAY}`)); n = s.exists() ? s.data().n : 0; })
+    .then(() => { b.set(doc(d, 'limits', `${u}_${DAY}`), { uid: u, day: DAY, n: n + 1 }); return b.commit(); });
 };
 const finish = (u, cid, { won, late, pay, pause }) => () => {
   const d = db(u);
@@ -36,15 +37,6 @@ const finish = (u, cid, { won, late, pay, pause }) => () => {
   });
 };
 
-// ---- diagnostics
-await t('diag: D limits alone', () => setDoc(doc(db('D'), 'limits', `D_${DAY}`), { uid: 'D', day: DAY, n: 1 }), true);
-await t('diag: E attempt+tries no limits on ch3', () => { const d = db('E'), b = writeBatch(d);
-  b.set(doc(d, 'attempts', 'ch3_E'), { ch: 'ch3', uid: 'E', name: 'Eve', setter: 'A', sname: 'Ann', stake: 5, target: 4, round: 1, day: DAY, g: [], status: 'playing', won: false, ts: serverTimestamp() });
-  b.update(doc(d, 'challenges', 'ch3'), { tries: increment(1) }); return b.commit(); }, true);
-await t('diag: E full accept ch3 without round', () => { const d = db('E'), b = writeBatch(d);
-  b.set(doc(d, 'attempts', 'ch3_E'), { ch: 'ch3', uid: 'E', name: 'Eve', setter: 'A', sname: 'Ann', stake: 5, target: 4, day: DAY, g: [], status: 'playing', won: false, ts: serverTimestamp() });
-  b.update(doc(d, 'challenges', 'ch3'), { tries: increment(1) }); b.set(doc(d, 'limits', `E_${DAY}`), { uid: 'E', day: DAY, n: 1 }); return b.commit(); }, true);
-await t('diag: DAY value '+DAY, async () => true, true);
 // ---- challenge: create
 await t('new-style challenge create', () => setDoc(doc(db('A'), 'challenges', 'n1'), { setter: 'A', setterName: 'Ann', c: 't112345', cs: 1, target: 4, stake: 5, created: serverTimestamp(), expires: exp(), open: true, paused: false, round: 1, clue: true, tries: 0, cracks: 0 }), true);
 await t('old-style challenge create still works', () => setDoc(doc(db('A'), 'challenges', 'n2'), { setter: 'A', setterName: 'Ann', c: 't112345', cs: 1, target: 4, stake: 5, created: serverTimestamp(), expires: exp(), open: true, tries: 0, cracks: 0 }), true);
@@ -74,7 +66,7 @@ await t('B cannot close someone else\'s', () => updateDoc(doc(db('B'), 'challeng
 // ---- old-style challenge flow still works (for the minutes before the new game goes live)
 await t('old-style accept (no round)', () => { const d = db('B'), b = writeBatch(d);
   b.set(doc(d, 'attempts', 'ch2_B'), { ch: 'ch2', uid: 'B', name: 'Bob', setter: 'A', sname: 'Ann', stake: 5, target: 4, day: DAY, g: [], status: 'playing', won: false, ts: serverTimestamp() });
-  b.update(doc(d, 'challenges', 'ch2'), { tries: increment(1) }); b.set(doc(d, 'limits', `B_${DAY}`), { uid: 'B', day: DAY, n: 2 }); return b.commit(); }, true);
+  b.update(doc(d, 'challenges', 'ch2'), { tries: increment(1) }); b.set(doc(d, 'limits', `B_${DAY}`), { uid: 'B', day: DAY, n: 2 }); return b.commit(); }, true); // B accepted ch1 once
 await t('old-style crack (no late/pay, cracks only)', finish('B', 'ch2', { won: true, pause: false }), true);
 await t('old-style close (open only)', () => updateDoc(doc(db('A'), 'challenges', 'ch3'), { open: false }), true);
 // ---- leagues
