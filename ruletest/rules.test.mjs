@@ -30,7 +30,7 @@ const finish = (u, cid, { won, late, pay, pause }) => () => {
   const d = db(u);
   return runTransaction(d, async tx => {
     await tx.get(doc(d, 'challenges', cid));
-    const data = { g: ['11111', '22222'], status: 'done', won, secs: 30, ts: serverTimestamp() };
+    const data = { g: won ? ['11111', '22222'] : ['1', '2', '3', '4'], status: 'done', won, secs: 30, ts: serverTimestamp() };
     if (late !== undefined) data.late = late; if (pay !== undefined) data.pay = pay;
     tx.update(doc(d, 'attempts', `${cid}_${u}`), data);
     if (won) tx.update(doc(d, 'challenges', cid), pause ? { cracks: increment(1), open: false, paused: true } : { cracks: increment(1) });
@@ -61,6 +61,8 @@ await t('B cannot play it again after re-open', accept('B', 'Bob', 'ch1', 2, 3, 
 await t('D cannot join with old round number', accept('D', 'Dan', 'ch1', 1, 3, 5), false);
 await t('D accepts round 2', accept('D', 'Dan', 'ch1', 2, 3, 5), true);
 await t('D cracks round 2 first and pauses it', finish('D', 'ch1', { won: true, late: false, pay: true, pause: true }), true);
+await t('cannot fail with guesses left', finish('C', 'ch3', { won: false, late: false }), false);
+await t('the void case: cracks first but setter cannot pay (pay false) still pauses', async () => { await accept('D', 'Dan', 'ch3')(); return finish('D', 'ch3', { won: true, late: false, pay: false, pause: true })(); }, true);
 await t('A closes paused ch1', () => updateDoc(doc(db('A'), 'challenges', 'ch1'), { open: false, paused: false }), true);
 await t('B cannot close someone else\'s', () => updateDoc(doc(db('B'), 'challenges', 'ch3'), { open: false, paused: false }), false);
 // ---- old-style challenge flow still works (for the minutes before the new game goes live)
