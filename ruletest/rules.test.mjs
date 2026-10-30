@@ -14,8 +14,8 @@ await env.withSecurityRulesDisabled(async ctx => {
   const d = ctx.firestore();
   for (const [u, n] of [['A', 'Ann'], ['B', 'Bob'], ['C', 'Cat'], ['D', 'Dan'], ['E', 'Eve']])
     await setDoc(doc(d, 'players', u), { name: n, total: 50, played: 5, wins: 5, last: 0 });
-  const ch = (id, extra = {}) => setDoc(doc(d, 'challenges', id), { setter: 'A', setterName: 'Ann', c: 't112345', cs: 1, target: 4, stake: 5, created: new Date(), expires: exp(), open: true, paused: false, round: 1, clue: true, tries: 0, cracks: 0, ...extra });
-  await ch('ch1'); await ch('ch2', { paused: undefined, round: undefined, clue: undefined }); await ch('ch3');
+  const ch = (id, drop = []) => { const o = { setter: 'A', setterName: 'Ann', c: 't112345', cs: 1, target: 4, stake: 5, created: new Date(), expires: exp(), open: true, paused: false, round: 1, clue: true, tries: 0, cracks: 0 }; drop.forEach(k => delete o[k]); return setDoc(doc(d, 'challenges', id), o); };
+  await ch('ch1'); await ch('ch2', ['paused', 'round', 'clue']); await ch('ch3');
 });
 const db = u => env.authenticatedContext(u).firestore();
 const accept = (u, name, cid, round = 1, stake = 5, target = 4) => () => {
