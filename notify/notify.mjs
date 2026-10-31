@@ -137,7 +137,7 @@ if (reports.length) {
 
 // ---- 3. 6pm round-up: challenges waiting for you ----
 const today = `${lp.y}-${String(lp.m).padStart(2, '0')}-${String(lp.d).padStart(2, '0')}`;
-if (lp.h === 18 && meta.lastDigest !== today) {
+if (lp.h >= 18 && lp.h < 20 && meta.lastDigest !== today) {
   const open = (await db.collection('challenges').where('open', '==', true).get()).docs
     .map(d => ({ id: d.id, ...d.data() })).filter(c => c.expires > now);
   const tried = new Set((await db.collection('attempts').get()).docs.map(d => `${d.data().ch}_${d.data().uid}`));
