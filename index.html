@@ -9,7 +9,7 @@
 <meta property="og:description" content="Crack today's 5-digit code in 7 guesses. Can you beat my score?">
 <meta name="author" content="Mathew Doughty">
 <meta name="copyright" content="© 2026 Mathew Doughty. All rights reserved.">
-<meta name="theme-color" content="#151a23">
+<meta name="theme-color" content="#3a2a1c">
 <link rel="icon" type="image/png" href="icons/favicon-64.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -19,7 +19,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@500;700&family=Big+Shoulders+Display:wght@800;900&family=Figtree:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Azeret+Mono:wght@500;700&family=Big+Shoulders+Display:wght@800;900&family=Figtree:wght@400;600;700&display=swap">
 <style>
 /* Layout: one-screen phone app: header, clue slip, 7x5 board on a dark panel, number pad at the bottom */
 :root{
@@ -221,6 +221,57 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 @media (max-width:400px){.tools{gap:4px}.icon{width:34px;height:34px}.icon svg{width:17px;height:17px}.brand h1{font-size:30px}.top{gap:8px}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 ol.moved{margin:6px 0 14px;padding-left:22px;line-height:1.5}ol.moved li{margin:4px 0}
+
+/* ================= The Puzzle Shed look =================
+   Timber walls, a painted sign for the title, a chalkboard for the board, wooden number blocks
+   and paper notes for the windows. Same in light and dark mode, like the shed itself. */
+:root{
+  --bg:#ebdfc2; --surface:#f6eedb; --ink:#2b2219; --muted:#6d5f4c; --line:#cdb88f; --empty:#e8d3ab;
+  --hit:#22915d; --near:#d4951a; --miss:#6b6f78; --on:#ffffff; --accent:#2f6a4a; --bad:#b0412d;
+  --panel:#26332c; --slot:#2f3e36; --slotline:#4b5e53; --typed:#f1efe6; --typedink:#26332c;
+  --shade:rgba(40,25,10,.10); --scrim:rgba(30,18,8,.55);
+  --sign:"Alfa Slab One", Rockwell, "Roboto Slab", Georgia, serif;
+  --wood:#6d4a2d; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#ebdfc2; --surface:#f6eedb; --ink:#2b2219; --muted:#6d5f4c; --line:#cdb88f; --empty:#e8d3ab;
+  --hit:#22915d; --near:#d4951a; --miss:#6b6f78; --on:#ffffff; --accent:#2f6a4a; --bad:#b0412d;
+  --panel:#26332c; --slot:#2f3e36; --slotline:#4b5e53; --typed:#f1efe6; --typedink:#26332c;
+  --shade:rgba(40,25,10,.10); --scrim:rgba(30,18,8,.55); color-scheme:light}}
+html{background:#3a2a1c}
+body{
+  background-color:var(--wood);
+  background-image:
+    radial-gradient(ellipse 100% 45% at 50% 0%,rgba(255,214,140,.26),transparent 70%),
+    repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 2px,rgba(255,255,255,.06) 2px 3px,transparent 3px 96px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .55' numOctaves='3' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 .2  0 0 0 0 .12  0 0 0 0 .05  0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23g)'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(90deg,#714d2f 0 96px,#664429 96px 192px,#7a5434 192px 288px,#6a482b 288px 384px);
+}
+/* header: the title on a painted sign, buttons as paper tags */
+.top{border-bottom:none;padding-bottom:2px}
+.brand h1{
+  font-family:var(--sign);font-weight:400;font-size:27px;letter-spacing:.04em;color:#f3e6c4;
+  background:linear-gradient(180deg,#36553f,#2a4333);padding:5px 12px 4px;border-radius:4px;
+  border:3px solid #5a3b22;box-shadow:0 4px 8px rgba(0,0,0,.4);transform:rotate(-1.5deg);text-shadow:0 1px 0 rgba(0,0,0,.35)
+}
+.sub{color:#f3e6c4;opacity:.85;margin-top:3px}
+.icon{background:var(--surface);border-color:#5a3b22;color:var(--ink);box-shadow:0 2px 4px rgba(0,0,0,.3)}
+/* clue: a paper slip */
+.clue{border:none;box-shadow:0 4px 10px rgba(0,0,0,.3);background-image:repeating-linear-gradient(0deg,transparent 0 23px,rgba(120,90,50,.08) 23px 24px)}
+/* board: a chalkboard in a timber frame */
+.board{border:8px solid #7b5129;border-radius:6px;
+  background:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.07),transparent 60%),var(--panel);
+  box-shadow:0 10px 20px rgba(0,0,0,.45),inset 0 0 24px rgba(0,0,0,.45),0 0 0 2px #4a3020}
+/* number pad: wooden blocks */
+.key{background:linear-gradient(180deg,#f0dcb4,#ddc193);color:var(--ink);box-shadow:inset 0 -3px 0 rgba(90,60,25,.35),0 2px 3px rgba(0,0,0,.3)}
+.key.enter{background:linear-gradient(180deg,#36553f,#2a4333);color:#f3e6c4}
+.key.hit{background:var(--hit);color:var(--on)}
+.key.near{background:var(--near);color:var(--on)}
+.key.miss{background:var(--miss);color:var(--on)}
+/* pop-up windows: paper notes */
+.sheet{background-color:var(--surface);box-shadow:0 14px 30px rgba(0,0,0,.45)}
+.sheet h2{font-family:var(--sign);font-weight:400;font-size:26px;letter-spacing:.02em;text-transform:none}
+.toast{background:#2a4333;color:#f3e6c4}
 </style>
 </head>
 <body>
