@@ -94,9 +94,43 @@ service cloud.firestore {
     match /push/{uid} {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
       allow create, update: if request.auth != null && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['codes', 'mine', 'daily', 'name', 'tokens', 'updated'])
+        && request.resource.data.keys().hasOnly(['codes', 'mine', 'daily', 'name', 'tokens', 'updated', 'home'])
         && request.resource.data.tokens is list && request.resource.data.tokens.size() <= 10
         && request.resource.data.updated == request.time;
+    }
+
+    // ---------- Chat about each code ----------
+    // The moderator is whoever owns the nickname "Mathew".
+    function isMod() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/names/mathew).data.uid == request.auth.uid;
+    }
+    match /comments/{id} {
+      allow read: if true;
+      // Only players who have a score for that code (so have finished it), and who aren't stopped from posting.
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'round', 'text', 'ts'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.round is int
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 280
+        && request.resource.data.ts == request.time
+        && request.resource.data.name == get(/databases/$(database)/documents/players/$(request.auth.uid)).data.name
+        && exists(/databases/$(database)/documents/scores/$(string(request.resource.data.round) + '_' + request.auth.uid))
+        && !exists(/databases/$(database)/documents/bans/$(request.auth.uid));
+      allow delete: if request.auth != null && (resource.data.uid == request.auth.uid || isMod());
+    }
+    match /reports/{id} {
+      allow create: if request.auth != null
+        && id == request.resource.data.cid + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(['cid', 'round', 'uid', 'name', 'text', 'by', 'ts'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.ts == request.time;
+      allow read, delete: if isMod();
+    }
+    match /bans/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isMod());
+      allow write: if isMod();
     }
 
     // Used only by the notification sender.

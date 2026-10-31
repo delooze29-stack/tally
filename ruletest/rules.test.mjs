@@ -106,6 +106,37 @@ await t('A invites D (for delete test)', invite('A', 'Ann', 'D', 'Dan'), true);
 await t('B cannot delete league', () => deleteDoc(doc(db('B'), 'leagues', 'L1')), false);
 await t('A deletes league with its records', () => { const d = db('A'), b = writeBatch(d); b.delete(doc(d, 'members', 'L1_A')); b.delete(doc(d, 'invites', 'L1_D')); b.delete(doc(d, 'leagues', 'L1')); return b.commit(); }, true);
 
+// ---- chat
+await env.withSecurityRulesDisabled(async ctx => {
+  const d = ctx.firestore();
+  await setDoc(doc(d, 'players', 'M'), { name: 'Mathew', total: 0, played: 0, wins: 0, last: 0 });
+  await setDoc(doc(d, 'names', 'mathew'), { uid: 'M' });
+  await setDoc(doc(d, 'scores', '100017_A'), { uid: 'A', name: 'Ann', day: 100017 });
+  await setDoc(doc(d, 'scores', '100017_B'), { uid: 'B', name: 'Bob', day: 100017 });
+  await setDoc(doc(d, 'comments', 'cB'), { uid: 'B', name: 'Bob', round: 100017, text: 'hi', ts: new Date() });
+});
+const cm = (u, extra = {}) => () => setDoc(doc(db(u), 'comments', 'c' + u + Math.random()), { uid: u, name: { A: 'Ann', B: 'Bob', C: 'Cat' }[u], round: 100017, text: 'nice one', ts: serverTimestamp(), ...extra });
+await t('A (finished) can comment', cm('A'), true);
+await t('C (not finished) cannot comment', cm('C'), false);
+await t('A cannot post as Bob', () => setDoc(doc(db('A'), 'comments', 'x1'), { uid: 'A', name: 'Bob', round: 100017, text: 'x', ts: serverTimestamp() }), false);
+await t('A cannot post 281 chars', cm('A', { text: 'x'.repeat(281) }), false);
+await t('A cannot post empty', cm('A', { text: '' }), false);
+await t('signed-out can read comments', () => getDoc(doc(env.unauthenticatedContext().firestore(), 'comments', 'cB')), true);
+await t('A cannot delete Bob comment', () => deleteDoc(doc(db('A'), 'comments', 'cB')), false);
+await t('A reports Bob comment', () => setDoc(doc(db('A'), 'reports', 'cB_A'), { cid: 'cB', round: 100017, uid: 'B', name: 'Bob', text: 'hi', by: 'A', ts: serverTimestamp() }), true);
+await t('A cannot report as someone else', () => setDoc(doc(db('A'), 'reports', 'cB_C'), { cid: 'cB', round: 100017, uid: 'B', name: 'Bob', text: 'hi', by: 'C', ts: serverTimestamp() }), false);
+await t('A cannot read reports', () => getDoc(doc(db('A'), 'reports', 'cB_A')), false);
+await t('Mathew can read reports', () => getDoc(doc(db('M'), 'reports', 'cB_A')), true);
+await t('A cannot ban Bob', () => setDoc(doc(db('A'), 'bans', 'B'), { name: 'Bob', ts: serverTimestamp() }), false);
+await t('Mathew bans Bob', () => setDoc(doc(db('M'), 'bans', 'B'), { name: 'Bob', ts: serverTimestamp() }), true);
+await t('Bob can no longer comment', cm('B'), false);
+await t('Bob can see he is banned', () => getDoc(doc(db('B'), 'bans', 'B')), true);
+await t('Mathew deletes Bob comment', () => deleteDoc(doc(db('M'), 'comments', 'cB')), true);
+await t('Mathew clears report', () => deleteDoc(doc(db('M'), 'reports', 'cB_A')), true);
+await t('A deletes own comment', async () => { const id = 'own1'; await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'comments', id), { uid: 'A', name: 'Ann', round: 100017, text: 'x', ts: new Date() })); return deleteDoc(doc(db('A'), 'comments', id)); }, true);
+// ---- push settings with the new-home marker
+await t('push doc with home marker', () => setDoc(doc(db('A'), 'push', 'A'), { codes: true, mine: true, daily: true, name: 'Ann', tokens: ['t1'], home: 'puzzleshed', updated: serverTimestamp() }), true);
+
 await env.cleanup();
 const txt = `${fails ? 'FAILED' : 'ALL PASSED'} (${out.length - fails}/${out.length})\n` + out.join('\n') + '\n';
 fs.writeFileSync('results.txt', txt); console.log(txt);
