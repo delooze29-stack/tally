@@ -119,6 +119,22 @@ for (const v of invites) {
 }
 if (invNewest !== invSince) update.lastInvite = invNewest;
 
+// ---- 2c. Reported chat comments: tell the moderator (the player called Mathew) ----
+const repSince = meta.lastReport || admin.firestore.Timestamp.fromMillis(now - 30 * 60e3);
+const reports = (await db.collection('reports').where('ts', '>', repSince).get()).docs.map(d => d.data());
+if (reports.length) {
+  let repNewest = repSince;
+  reports.forEach(r => { if (r.ts && r.ts.toMillis() > repNewest.toMillis()) repNewest = r.ts; });
+  update.lastReport = repNewest;
+  const modDoc = await db.collection('names').doc('mathew').get();
+  const mod = modDoc.exists && (await players()).find(d => d.uid === modDoc.data().uid);
+  const r = reports[reports.length - 1];
+  if (mod) await send(mod, {
+    title: reports.length === 1 ? '⚑ A chat comment was reported' : `⚑ ${reports.length} chat comments were reported`,
+    body: `${r.name}: "${String(r.text).slice(0, 80)}"`, tag: 'reports', url: SITE + '#chat'
+  });
+}
+
 // ---- 3. 6pm round-up: challenges waiting for you ----
 const today = `${lp.y}-${String(lp.m).padStart(2, '0')}-${String(lp.d).padStart(2, '0')}`;
 if (lp.h === 18 && meta.lastDigest !== today) {

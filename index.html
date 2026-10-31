@@ -222,6 +222,18 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 ol.moved{margin:6px 0 14px;padding-left:22px;line-height:1.5}ol.moved li{margin:4px 0}
 
+
+.chatbtn{width:100%;flex:none}
+ol.chat{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-height:46vh;overflow:auto}
+ol.chat li{background:var(--bg);border-radius:10px;padding:9px 12px}
+ol.chat li.me{border-left:4px solid var(--hit)}
+ol.chat li.flagged{border-left:4px solid var(--bad)}
+.chat-h{display:flex;justify-content:space-between;gap:8px;font-size:13px}.chat-h span{color:var(--muted)}
+.chat-t{margin-top:2px;line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap}
+.chat-a{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px}.chat-a:empty{display:none}
+.chat-a .flag{color:var(--bad);font-weight:700;padding:4px 0}
+#chatTxt{width:100%;font:inherit;border-radius:8px;border:1px solid var(--line);background:#fffdf6;color:var(--ink);padding:9px 10px;resize:vertical}
+.chat-send{display:flex;justify-content:space-between;align-items:center}
 /* ================= The Puzzle Shed look =================
    Timber walls, a painted sign for the title, a chalkboard for the board, wooden number blocks
    and paper notes for the windows. Same in light and dark mode, like the shed itself. */
@@ -668,6 +680,91 @@ function showMoved(){
     const back=sh.querySelector('[data-mode="back"]');if(back)back.click();
     sh.querySelector('#mvNew').addEventListener('click',()=>{closeSheet();setTimeout(showHelp,150)});
   });
+}
+
+/* ---------- Chat about this code ----------
+   One chat per code. Only players who have finished that code can read or post, so there are no spoilers.
+   Anyone can report a comment; the moderator (the player called Mathew) can delete comments and stop
+   a nickname from posting. Reports also send the moderator a notification. */
+const MOD_SLUG='mathew', CHAT_MAX=280;
+const isMod=()=>!!(user&&player&&slug(player.name)===MOD_SLUG);
+let chatCache=null,chatAt=0;
+async function loadChat(force){
+  if(!db)return [];
+  if(!force&&chatCache&&chatCache.r===RKEY&&Date.now()-chatAt<15000)return chatCache.rows;
+  const q=await db.collection('comments').where('round','==',RKEY).get();
+  const rows=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>tsMs(a.ts)-tsMs(b.ts));
+  chatCache={r:RKEY,rows};chatAt=Date.now();return rows;
+}
+const tsMs=t=>t&&t.toMillis?t.toMillis():(+t||Date.now());
+async function chatCount(){try{return (await loadChat()).length}catch(e){return 0}}
+function ago(t){const m=Math.max(0,Math.round((Date.now()-tsMs(t))/6e4));return m<1?'just now':m<60?m+'m ago':Math.round(m/60)+'h ago'}
+function showChat(){
+  openSheet(`<h2>💬 Chat</h2><p class="muted" style="margin-top:-8px">${isEvening()?'Evening':'Morning'} code No. ${ROUND}. Only players who've finished it can see this.</p><div id="chatBody" class="stack"><p class="muted">Loading…</p></div>`,sh=>fillChat(sh.querySelector('#chatBody')));
+}
+async function fillChat(el,force){
+  await authReady;
+  if(!(S.mode==='daily'&&S.done)&&!(S.remote)&&!isMod()){el.innerHTML=`<p>Finish this code first, then come back to chat about it. No spoilers here.</p>`;return}
+  let rows=[],banned=false,reports={},older={};
+  try{
+    const jobs=[loadChat(force)];
+    if(user)jobs.push(db.collection('bans').doc(user.uid).get().then(d=>banned=d.exists).catch(()=>{}));
+    if(isMod())jobs.push(db.collection('reports').get().then(q=>q.docs.forEach(d=>{const x=d.data();(reports[x.cid]=reports[x.cid]||[]).push(d.id);older[x.cid]=x})).catch(()=>{}));
+    rows=(await Promise.all(jobs))[0];
+  }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the chat. Check your connection.</p>';return}
+  const mod=isMod();
+  const list=rows.length?`<ol class="chat">${rows.map(r=>`<li class="${user&&r.uid===user.uid?'me':''}${reports[r.id]?' flagged':''}">
+      <div class="chat-h"><b>${esc(r.name)}</b><span>${ago(r.ts)}</span></div>
+      <div class="chat-t">${esc(r.text)}</div>
+      <div class="chat-a">${user&&r.uid===user.uid?`<button class="link" data-del="${r.id}">Delete</button>`:user&&!mod?`<button class="link" data-rep="${r.id}">Report</button>`:''}
+        ${mod&&r.uid!==user.uid?`<button class="link" data-del="${r.id}">Delete</button><button class="link" data-ban="${r.uid}" data-name="${esc(r.name)}">Stop posting</button>`:''}
+        ${mod&&reports[r.id]?`<span class="flag">⚑ Reported ×${reports[r.id].length}</span><button class="link" data-keep="${r.id}">Keep it</button>`:''}</div></li>`).join('')}</ol>`
+    :`<p class="muted">No comments yet. Say how it went.</p>`;
+  const form=!user?`<p class="muted">Sign in to join the chat.</p>`:banned?`<div class="note">You can't post in the chat at the moment. If you think that's a mistake, email tallypuzzle@gmail.com.</div>`:
+    `<form class="form" id="chatForm" novalidate><textarea id="chatTxt" maxlength="${CHAT_MAX}" rows="2" placeholder="How did you get on?"></textarea>
+      <div class="chat-send"><span class="muted" id="chatLeft">${CHAT_MAX}</span><button class="btn primary small" id="chatPost" type="submit">Post</button></div><div class="err" id="chatErr"></div></form>
+      <p class="muted" style="font-size:12px">Be kind. Comments can be reported, and the game's owner removes anything nasty.</p>`;
+  /* Moderator: reported comments from earlier codes, which aren't in this code's chat. */
+  const earlier=mod?Object.values(older).filter(x=>!rows.some(r=>r.id===x.cid)):[];
+  const modBox=earlier.length?`<div class="label">Reported from earlier codes</div><ol class="chat">${earlier.map(x=>`<li class="flagged">
+      <div class="chat-h"><b>${esc(x.name)}</b><span>Code No. ${x.round-R_BASE}</span></div><div class="chat-t">${esc(x.text)}</div>
+      <div class="chat-a"><span class="flag">⚑ Reported ×${reports[x.cid].length}</span><button class="link" data-del="${x.cid}">Delete</button><button class="link" data-keep="${x.cid}">Keep it</button><button class="link" data-ban="${x.uid}" data-name="${esc(x.name)}">Stop posting</button></div></li>`).join('')}</ol>`:'';
+  el.innerHTML=modBox+list+form;
+  const ta=el.querySelector('#chatTxt');
+  if(ta)ta.addEventListener('input',()=>{el.querySelector('#chatLeft').textContent=CHAT_MAX-ta.value.length});
+  const f=el.querySelector('#chatForm');
+  if(f)f.addEventListener('submit',async e=>{
+    e.preventDefault();const t=ta.value.trim(),err=el.querySelector('#chatErr'),b=el.querySelector('#chatPost');err.textContent='';
+    if(!t)return;
+    b.disabled=true;
+    try{
+      if(!player)await loadPlayer();
+      await db.collection('comments').add({uid:user.uid,name:player.name,round:RKEY,text:t.slice(0,CHAT_MAX),ts:FV().serverTimestamp()});
+      fillChat(el,true);
+    }catch(x){console.warn(x);b.disabled=false;
+      err.textContent=x.code==='permission-denied'?"Couldn't post. Your score for this code needs to be saved first, so check you're signed in.":'Could not post. Check your connection.'}
+  });
+  el.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;
+    try{await db.collection('comments').doc(b.dataset.del).delete();
+      if(mod)(reports[b.dataset.del]||[]).forEach(id=>db.collection('reports').doc(id).delete().catch(()=>{}));
+      toast('Deleted');fillChat(el,true)}
+    catch(x){console.warn(x);b.disabled=false;toast('Could not delete it')}
+  }));
+  el.querySelectorAll('[data-rep]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;
+    const r=rows.find(x=>x.id===b.dataset.rep);
+    try{await db.collection('reports').doc(`${r.id}_${user.uid}`).set({cid:r.id,round:RKEY,uid:r.uid,name:r.name,text:r.text,by:user.uid,ts:FV().serverTimestamp()});b.textContent='Reported';toast('Thanks. The owner will take a look.')}
+    catch(x){console.warn(x);b.disabled=false;toast('Could not report it')}
+  }));
+  el.querySelectorAll('[data-keep]').forEach(b=>b.addEventListener('click',async()=>{
+    await Promise.all((reports[b.dataset.keep]||[]).map(id=>db.collection('reports').doc(id).delete().catch(()=>{})));toast('Kept');fillChat(el,true);
+  }));
+  el.querySelectorAll('[data-ban]').forEach(b=>b.addEventListener('click',async()=>{
+    if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent=`Tap again to stop ${b.dataset.name} posting`;return}
+    try{await db.collection('bans').doc(b.dataset.ban).set({name:b.dataset.name,ts:FV().serverTimestamp()});toast(`${b.dataset.name} can't post any more`)}
+    catch(x){console.warn(x);toast('Could not do that')}
+  }));
 }
 
 /* ---------- Change password ---------- */
@@ -1590,6 +1687,7 @@ function showResult(){
   ${timeLine}
   ${lbNote}
   <div class="actions"><button class="btn primary" id="shareBtn">Copy result</button>${S.mode==='daily'?'<button class="btn" id="lbBtn">Leaderboard</button>':''}</div>
+  ${S.mode==='daily'?`<button class="btn chatbtn" id="chatBtn">💬 Chat about this code<span id="chatN"></span></button>`:''}
   <div id="copyArea"></div>
   ${S.mode==='daily'?installHTML():''}
   <div class="actions"><button class="btn" id="practiceBtn">${S.mode==='daily'?'Practice code':'Play another'}</button>${S.mode==='practice'?`<button class="btn" id="dailyBtn">Back to today's code</button>`:''}</div>
@@ -1601,6 +1699,7 @@ function showResult(){
       try{navigator.clipboard.writeText(txt).then(()=>toast('Result copied. Paste it on Facebook or WhatsApp'),fallback)}catch(e){fallback()}
     });
     const lb=sh.querySelector('#lbBtn');if(lb)lb.addEventListener('click',()=>showBoard('today'));
+    const cb=sh.querySelector('#chatBtn');if(cb){cb.addEventListener('click',showChat);chatCount().then(n=>{const e=$('chatN');if(e&&n)e.textContent=` (${n})`})}
     sh.querySelector('#practiceBtn').addEventListener('click',()=>{closeSheet();startPractice()});
     const db2=sh.querySelector('#dailyBtn');if(db2)db2.addEventListener('click',()=>{closeSheet();startDaily()});
     mountSignIn(sh,()=>showResult());
@@ -1637,8 +1736,8 @@ if(IS_BETA)$('betaTag').hidden=false;
 if(auth)auth.onAuthStateChanged(async u=>{user=u;if(!u)player=null;boardLeaguesLoaded=false;try{await switchUser()}catch(e){console.warn(e)}authReadyResolve();if(u)loadLeagues().catch(e=>console.warn(e));else{myLeagues=[];myInvites=[]}if(u)setTimeout(maybeAskPush,1500)});
 else authReadyResolve();
 const link=/^#c([A-Za-z0-9]{10,40})$/.exec(location.hash);
-const hashView=location.hash==='#mine'?'mine':location.hash==='#leagues'?'leagues':'';
-if(hashView){try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>authReady.then(()=>hashView==='mine'?showChallenges('mine'):showLeagues()),300)}
+const hashView=location.hash==='#mine'?'mine':location.hash==='#leagues'?'leagues':location.hash==='#chat'?'chat':'';
+if(hashView){try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>authReady.then(()=>hashView==='mine'?showChallenges('mine'):hashView==='chat'?showChat():showLeagues()),300)}
 if(hashView){}else if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
 else if(isNewHome())authReady.then(()=>{if(!user&&!modal)showMoved();else store.set('tally.movedSeen',1)});
 else if(!prefs.seenHelp)setTimeout(showHelp,300);
