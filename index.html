@@ -1280,7 +1280,10 @@ function showBoard(tab){
   });
 }
 async function fillBoard(el){
-  if(lbTab==='me'){el.innerHTML=myStatsHTML();return}
+  if(lbTab==='me'){
+    el.innerHTML=myStatsHTML();
+    if(user&&db)serverStats().then(st=>{if(st&&el.isConnected&&lbTab==='me')el.innerHTML=myStatsHTML(st)}).catch(e=>console.warn(e));
+    return}
   if(!db){el.innerHTML='<p class="muted">The leaderboard is offline right now.</p>';return}
   let rows=[], held=0;
   const lg=scopeLeague();
@@ -1332,13 +1335,25 @@ async function fillBoard(el){
   el.innerHTML=html;
   mountSignIn(el,()=>showBoard());
 }
-function myStatsHTML(){
-  const pct=stats.played?Math.round(stats.wins/stats.played*100):0, mx=Math.max(1,...stats.dist);
+/* Signed-in stats come from the player's saved scores, so they're the same on every phone. */
+async function serverStats(){
+  const q=await db.collection('scores').where('uid','==',user.uid).get();
+  const st={played:0,wins:0,streak:0,dist:[0,0,0,0,0,0,0],server:true};
+  const won=new Set(),played=new Set();
+  q.docs.forEach(d=>{const x=d.data();st.played++;
+    if(x.won){st.wins++;if(x.guesses>=1&&x.guesses<=MAX)st.dist[x.guesses-1]++}
+    if(x.day>=R_BASE){played.add(x.day-R_BASE);if(x.won)won.add(x.day-R_BASE)}});
+  let r=played.has(ROUND)?ROUND:ROUND-1;while(won.has(r)){st.streak++;r--}
+  return st;
+}
+function myStatsHTML(st){
+  const t=st||stats;
+  const pct=t.played?Math.round(t.wins/t.played*100):0, mx=Math.max(1,...t.dist);
   const todayRow=S.mode==='daily'&&S.done&&S.won?S.guesses.length-1:-1;
-  const total=player?myPoints():stats.points;
-  return `<div class="nums"><div><b>${total}</b><span>Points</span></div><div><b>${stats.played}</b><span>Played</span></div><div><b>${pct}</b><span>Win %</span></div><div><b>${stats.streak}</b><span>Streak</span></div></div>
-  <div><div class="label" style="margin-bottom:8px">Guess distribution</div><div class="dist">${stats.dist.map((n,i)=>`<div class="bar${i===todayRow?' today':''}"><span>${i+1}</span><i style="width:${Math.max(8,n/mx*100)}%">${n}</i></div>`).join('')}</div></div>
-  <p class="muted">Played, win % and streak are for this phone. Points ${player?'come from the leaderboard and include challenge wins and losses':'count once you sign in'}.</p>`;
+  const total=player?myPoints():t.points;
+  return `<div class="nums"><div><b>${total}</b><span>Points</span></div><div><b>${t.played}</b><span>Played</span></div><div><b>${pct}</b><span>Win %</span></div><div><b>${t.streak}</b><span>Streak</span></div></div>
+  <div><div class="label" style="margin-bottom:8px">Guess distribution</div><div class="dist">${t.dist.map((n,i)=>`<div class="bar${i===todayRow?' today':''}"><span>${i+1}</span><i style="width:${Math.max(8,n/mx*100)}%">${n}</i></div>`).join('')}</div></div>
+  <p class="muted">${t.server?'Worked out from all your saved scores, on any phone. Points include challenge wins and losses.':`Played, win % and streak are for this phone. Points ${player?'come from the leaderboard and include challenge wins and losses':'count once you sign in'}.`}</p>`;
 }
 
 /* ---------- Challenges ---------- */
