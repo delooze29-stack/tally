@@ -94,7 +94,7 @@ service cloud.firestore {
     match /push/{uid} {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
       allow create, update: if request.auth != null && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['codes', 'mine', 'daily', 'name', 'tokens', 'updated'])
+        && request.resource.data.keys().hasOnly(['codes', 'mine', 'daily', 'name', 'tokens', 'updated', 'home'])
         && request.resource.data.tokens is list && request.resource.data.tokens.size() <= 10
         && request.resource.data.updated == request.time;
     }

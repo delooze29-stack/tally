@@ -15,7 +15,11 @@ const db = admin.firestore();
 const fcm = admin.messaging();
 const FV = admin.firestore.FieldValue;
 
-const SITE = 'https://delooze29-stack.github.io/tally/' + (process.env.TALLY_PATH || '');
+import { readFileSync } from 'node:fs';
+// Links point at the game's own web address: the custom domain in the CNAME file once there is one.
+let HOME = 'https://delooze29-stack.github.io/tally/';
+try { const d = readFileSync(new URL('../CNAME', import.meta.url), 'utf8').trim(); if (d) HOME = `https://${d}/`; } catch (e) {}
+const SITE = HOME + (process.env.TALLY_PATH || '');
 const TEST = (process.env.TEST_NICKNAME || '').trim().toLowerCase();
 const now = Date.now();
 const R = roundAt(now);

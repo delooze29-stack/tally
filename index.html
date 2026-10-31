@@ -220,6 +220,7 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 
 @media (max-width:400px){.tools{gap:4px}.icon{width:34px;height:34px}.icon svg{width:17px;height:17px}.brand h1{font-size:30px}.top{gap:8px}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+ol.moved{margin:6px 0 14px;padding-left:22px;line-height:1.5}ol.moved li{margin:4px 0}
 </style>
 </head>
 <body>
@@ -248,7 +249,7 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 <script>
 /* Tally © 2026 Mathew Doughty. All rights reserved. Not licensed for copying or reuse. */
 (function(){
-const SITE=location.protocol==='https:'?(location.host+location.pathname).replace(/index\.html$/,'').replace(/\/$/,''):'delooze29-stack.github.io/tally';
+const SITE=location.protocol==='https:'?(location.host+location.pathname).replace(/index\.html$/,'').replace(/\/$/,''):'tally.thepuzzleshed.com';
 const IS_BETA=/\/beta\//.test(location.pathname);
 const MAX=7, LEN=5, POINTS=[10,8,6,4,3,2,1];
 const $=id=>document.getElementById(id);
@@ -595,6 +596,29 @@ $('scrim').addEventListener('click',e=>{
   if(tappedBackdrop&&!$('sheet').querySelector('form'))closeSheet();
 });
 
+/* ---------- New home ----------
+   Tally moved from delooze29-stack.github.io/tally to tally.thepuzzleshed.com (Oct 2026).
+   GitHub sends the old address here automatically, but phones keep sign-ins, saved games and
+   notifications per address, so the first time someone arrives signed out we explain what to do. */
+function isNewHome(){return location.host==='tally.thepuzzleshed.com'&&!store.get('tally.movedSeen')&&Date.now()<Date.UTC(2027,0,1)}
+function showMoved(){
+  store.set('tally.movedSeen',1);
+  openSheet(`<h2>Tally has a new home</h2>
+    <p>Tally now lives at <b>tally.thepuzzleshed.com</b>, part of <a href="https://thepuzzleshed.com" target="_blank" rel="noopener">The Puzzle Shed</a>.</p>
+    <p class="muted">Played before? Your points, challenges and leagues are all safe. Just:</p>
+    <ol class="moved">
+      <li><b>Sign in</b> with your usual nickname and password.</li>
+      <li>If Tally was on your home screen, <b>remove the old icon</b> and add it again.</li>
+      <li>Turn <b>notifications</b> back on with the 🔔 button.</li>
+    </ol>
+    ${signInHTML()}
+    <div class="actions"><button class="btn" id="mvNew">New to Tally? How to play</button></div>`,sh=>{
+    mountSignIn(sh,()=>{closeSheet();toast('Welcome back')});
+    const back=sh.querySelector('[data-mode="back"]');if(back)back.click();
+    sh.querySelector('#mvNew').addEventListener('click',()=>{closeSheet();setTimeout(showHelp,150)});
+  });
+}
+
 /* ---------- Help ---------- */
 function exampleRow(){
   const g='36498',c='38516',res=score(g,c);
@@ -793,8 +817,12 @@ async function enablePush(prefs){
     const t=await firebase.messaging().getToken({vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
     if(!t)throw new Error('no token');
     const old=store.get(pushTokenKey());
-    if(old&&old!==t)await pushRef().set({tokens:FV().arrayRemove(old),updated:FV().serverTimestamp()},{merge:true}).catch(()=>{});
-    await pushRef().set({...prefs,name:player?player.name:'',tokens:FV().arrayUnion(t),updated:FV().serverTimestamp()},{merge:true});
+    /* The first time a player turns notifications on at the new address, drop the sign-ups from the
+       old github.io address so they don't get every message twice. Later phones just add themselves. */
+    let fresh=false;
+    if(location.host==='tally.thepuzzleshed.com'){try{const d=await pushRef().get();fresh=!(d.exists&&d.data().home==='puzzleshed')}catch(e){}}
+    if(!fresh&&old&&old!==t)await pushRef().set({tokens:FV().arrayRemove(old),updated:FV().serverTimestamp()},{merge:true}).catch(()=>{});
+    await pushRef().set({...prefs,name:player?player.name:'',tokens:fresh?[t]:FV().arrayUnion(t),...(fresh?{home:'puzzleshed'}:{}),updated:FV().serverTimestamp()},{merge:true});
     store.set(pushTokenKey(),t);
     return 'ok';
   }catch(x){console.warn(x);return 'error'}
@@ -1535,6 +1563,7 @@ const link=/^#c([A-Za-z0-9]{10,40})$/.exec(location.hash);
 const hashView=location.hash==='#mine'?'mine':location.hash==='#leagues'?'leagues':'';
 if(hashView){try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>authReady.then(()=>hashView==='mine'?showChallenges('mine'):showLeagues()),300)}
 if(hashView){}else if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
+else if(isNewHome())authReady.then(()=>{if(!user&&!modal)showMoved();else store.set('tally.movedSeen',1)});
 else if(!prefs.seenHelp)setTimeout(showHelp,300);
 else authReady.then(()=>{if(S.mode==='daily'&&S.done&&!modal)setTimeout(showResult,300)});
 })();
