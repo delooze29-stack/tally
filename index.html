@@ -363,6 +363,12 @@ function londonParts(t){
 }
 function roundAt(t){const p=londonParts(t);const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return d*2+(p.h>=20?2:p.h>=6?1:0)}
 const ROUND=roundAt(Date.now()), RKEY=R_BASE+ROUND;
+/* Code times in the player's own time zone: "6am and 8pm" in the UK, "1am and 3pm your time" in New York. */
+function ukHourAt(h){const p=londonParts(Date.now());let t=Date.UTC(p.y,p.m-1,p.d,h);const q=londonParts(t);return t-((q.h-h+24)%24)*36e5}
+function fmtHour(t){const d=new Date(t),h=d.getHours(),m=d.getMinutes();return (h%12||12)+(m?':'+String(m).padStart(2,'0'):'')+(h<12?'am':'pm')}
+const LOCAL_UK=(()=>{try{return ukHourAt(6)===new Date(ukHourAt(6)).setHours(6,0,0,0)&&ukHourAt(20)===new Date(ukHourAt(20)).setHours(20,0,0,0)}catch(e){return true}})();
+const T1=LOCAL_UK?'6am':fmtHour(ukHourAt(6)), T2=LOCAL_UK?'8pm':fmtHour(ukHourAt(20));
+const codeTimes=()=>{if(LOCAL_UK)return '6am and 8pm';const a=new Date(ukHourAt(6)).getHours(),b=new Date(ukHourAt(20)).getHours();return `${a<=b?T1:T2} and ${a<=b?T2:T1} your time`};
 /* Today's two codes (UK date): the 6am one and the 8pm one. */
 function todayKeys(){const p=londonParts(Date.now());const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return [R_BASE+2*d+1,R_BASE+2*d+2]}
 const isEvening=()=>ROUND%2===0;
@@ -827,7 +833,7 @@ function showHelp(){
   </div>
   <div><div class="label" style="margin-bottom:8px">Points for the leaderboard</div>
   <div class="ptable"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>✕</span><b>10</b><b>8</b><b>6</b><b>4</b><b>3</b><b>2</b><b>1</b><b>0</b></div></div>
-  <p class="muted">A new code arrives at 6am and 8pm (UK time). Pick a nickname from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
+  <p class="muted">A new code arrives at ${codeTimes()}${LOCAL_UK?' (UK time)':' (6am and 8pm in the UK)'}. Pick a nickname from the trophy button to get on the leaderboard. The refresh button gives unlimited practice codes that don't count.</p>
   ${installHTML()}
   <p class="muted">Questions, ideas or a problem? Email <strong style="user-select:all">tallypuzzle@gmail.com</strong></p>
   <p class="muted" style="font-size:12px">Tally © 2026 Mathew Doughty. All rights reserved.</p>`,mountInstall);
@@ -1023,7 +1029,7 @@ function maybeAskPush(){
   if(modal||busy||(S&&S.guesses.length&&!S.done)){askPending=true;return}
   askPending=false;store.set(askedKey(),1);
   openSheet(`<h2>Get a nudge?</h2>
-    <p>Tally can tell you when a new code is ready at 6am and 8pm, and when someone plays one of your challenges.</p>
+    <p>Tally can tell you when a new code is ready at ${codeTimes()}, and when someone plays one of your challenges.</p>
     <div class="err" id="askErr"></div>
     <div class="actions"><button class="btn primary" id="askYes">Yes, turn them on</button><button class="btn" id="askNo">Not now</button></div>
     <p class="muted">You can change this any time with the 🔔 button at the top.</p>`,sh=>{
@@ -1055,7 +1061,7 @@ async function fillNotify(el){
   const pref=k=>doc[k]!==false;
   el.innerHTML=`<p class="muted">Choose what Tally tells you about. You can change this any time.</p>
    <div class="toggles">
-    <label class="check"><input type="checkbox" id="ntCodes" ${pref('codes')?'checked':''}> New code ready, at 6am and 8pm</label>
+    <label class="check"><input type="checkbox" id="ntCodes" ${pref('codes')?'checked':''}> New code ready, at ${codeTimes()}</label>
     <label class="check"><input type="checkbox" id="ntMine" ${pref('mine')?'checked':''}> My challenges and league invites</label>
     <label class="check"><input type="checkbox" id="ntDaily" ${pref('daily')?'checked':''}> Challenges waiting for me, once a day at 6pm</label>
    </div>
@@ -1333,13 +1339,13 @@ async function fillBoard(el){
   }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
   if(lg){if(lbTab!=='all')rows=rows.filter(r=>lg.members.includes(r.uid));held=0}
   let html='';
-  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":lbTab==='day'?"No scores yet today. Today's first code starts at 6am.":'No scores yet.'}</p>`;
+  if(!rows.length)html=`<p class="muted">${lbTab==='today'?"Nobody has posted a score for this code yet. Be the first.":lbTab==='day'?`No scores yet today. Today's first code starts at ${T1}.`:'No scores yet.'}</p>`;
   else{
     let pos=0,prev=null;
     html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
-  if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: 6am and 8pm.</p>`+html;
+  if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: ${T1} and ${T2}.</p>`+html;
   if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from codes and challenges since each player joined ${esc(lg.name)}.</p>`+html;
   if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
   if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
