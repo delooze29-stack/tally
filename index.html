@@ -164,7 +164,7 @@ textarea.copybox{width:100%;height:150px;font-family:var(--mono);font-size:14px;
 .board-list .nm{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .board-list .gs{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .board-list .pt{font-family:var(--mono);font-weight:700;font-size:16px;min-width:44px;text-align:right}
-.who{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px}
+.who{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 10px;font-size:14px}
 .link{border:none;background:none;color:var(--accent);font-weight:700;padding:4px 0;text-decoration:underline}
 .tabs.two{grid-template-columns:1fr 1fr}
 .inline{display:flex;gap:8px}
@@ -670,6 +670,31 @@ function showMoved(){
   });
 }
 
+/* ---------- Change password ---------- */
+function showChangePw(){
+  openSheet(`<h2>Change password</h2>
+    <form class="form" id="cpForm" novalidate>
+      <p class="muted">Pick a new password for <b>${esc(player?player.name:'')}</b>. Passwords are case-sensitive.</p>
+      <div class="field"><label for="cp1">New password (6+ characters)</label><input id="cp1" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="cp2">Type it again</label><input id="cp2" type="password" autocomplete="new-password"></div>
+      <div class="err" id="cpErr"></div>
+      <button class="btn primary" type="submit" id="cpBtn">Save new password</button>
+    </form>`,sh=>{
+    const f=sh.querySelector('#cpForm'),err=sh.querySelector('#cpErr'),btn=sh.querySelector('#cpBtn');
+    f.addEventListener('submit',async e=>{
+      e.preventDefault();err.textContent='';
+      const a=sh.querySelector('#cp1').value,b=sh.querySelector('#cp2').value;
+      if(a.length<6){err.textContent='Password needs at least 6 characters.';return}
+      if(a!==b){err.textContent="Those two don't match. Type them again.";return}
+      btn.disabled=true;btn.textContent='Saving…';
+      try{await auth.currentUser.updatePassword(a);closeSheet();toast('Password changed')}
+      catch(x){console.warn(x);btn.disabled=false;btn.textContent='Save new password';
+        err.textContent=x.code==='auth/requires-recent-login'?'For safety, sign out and back in first, then change it straight away.':
+          x.code==='auth/network-request-failed'?'No connection. Check your signal and try again.':'Could not change it. Try again.'}
+    });
+  });
+}
+
 /* ---------- Help ---------- */
 function exampleRow(){
   const g='36498',c='38516',res=score(g,c);
@@ -1145,13 +1170,14 @@ function showBoard(tab){
   const tabList=lg?[['today','This code'],['day','Today'],['all','All time']]:[['today','This code'],['day','Today'],['all','All time'],['me','My stats']];
   const scope=user?`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],...myLeagues.map(l=>[l.id,l.name])].map(([v,l])=>`<option value="${v}"${v===(lg?lg.id:'')?' selected':''}>${esc(l)}</option>`).join('')}</select><button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button></div>`:'';
   const tabs=`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
-  const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><button class="link" id="signOut">Sign out</button></div>`:'';
+  const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><span style="display:flex;gap:14px;white-space:nowrap"><button class="link" id="chPw">Change password</button><button class="link" id="signOut">Sign out</button></span></div>`:'';
   openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>`,sh=>{
     sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
     const sc=sh.querySelector('#lbScope');if(sc)sc.addEventListener('change',()=>{setScope(sc.value);showBoard()});
     const lb=sh.querySelector('#lbLeagues');if(lb)lb.addEventListener('click',showLeagues);
     mountInvites(sh,()=>showBoard());
     if(user&&!boardLeaguesLoaded){boardLeaguesLoaded=true;loadLeagues().then(()=>{if(modal&&$('lbBody'))showBoard()}).catch(e=>console.warn(e))}
+    const cp=sh.querySelector('#chPw');if(cp)cp.addEventListener('click',showChangePw);
     const so=sh.querySelector('#signOut');if(so)so.addEventListener('click',async()=>{await auth.signOut();user=null;player=null;await switchUser();toast('Signed out');showBoard()});
     fillBoard(sh.querySelector('#lbBody'));
   });
