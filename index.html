@@ -1143,15 +1143,18 @@ async function leagueJoined(lg){
 }
 /* All time in a league: points from codes and challenges since each member joined. */
 async function leagueAllTime(lg,lucky){
+  /* League tables count daily codes only (not challenges), from when each player joined,
+     with how many goes they take on average to crack a code. */
   const joined=await leagueJoined(lg), ids=lg.members.slice();
   const chunks=[];for(let i=0;i<ids.length;i+=30)chunks.push(ids.slice(i,i+30));
-  const [snaps,atts]=await Promise.all([Promise.all(chunks.map(c=>db.collection('scores').where('uid','in',c).get())),loadAttempts().catch(()=>[])]);
-  const tot={};ids.forEach(u=>tot[u]={uid:u,name:(joined[u]||{}).name||'Player',pts:0,played:0});
+  const snaps=await Promise.all(chunks.map(c=>db.collection('scores').where('uid','in',c).get()));
+  const tot={};ids.forEach(u=>tot[u]={uid:u,name:(joined[u]||{}).name||'Player',pts:0,played:0,won:0,goes:0});
   const ms=t=>t&&t.toMillis?t.toMillis():(t&&t.seconds?t.seconds*1000:0);
-  snaps.forEach(q=>q.docs.forEach(d=>{const x=d.data(),p=tot[x.uid];if(!p)return;if(ms(x.ts)<((joined[x.uid]||{}).joined||0))return;p.pts+=x.points||0;p.played++;if(x.name)p.name=x.name}));
-  ids.forEach(u=>{const since=(joined[u]||{}).joined||0;tot[u].pts+=atts.filter(a=>(a.uid===u||a.setter===u)&&ms(a.ts)>=since).reduce((s,a)=>s+attemptDelta(a,u),0)});
-  return Object.values(tot).filter(p=>!isHeld(lucky,p.uid)).map(p=>({...p,pts:Math.max(0,p.pts)})).sort((a,b)=>b.pts-a.pts||a.name.localeCompare(b.name))
-    .map(p=>({uid:p.uid,name:p.name,pts:p.pts,meta:`${p.played} played`}));
+  snaps.forEach(q=>q.docs.forEach(d=>{const x=d.data(),p=tot[x.uid];if(!p)return;if(ms(x.ts)<((joined[x.uid]||{}).joined||0))return;
+    p.pts+=x.points||0;p.played++;if(x.won){p.won++;p.goes+=x.guesses||0}if(x.name)p.name=x.name}));
+  const avg=p=>p.won?p.goes/p.won:99;
+  return Object.values(tot).filter(p=>!isHeld(lucky,p.uid)).sort((a,b)=>b.pts-a.pts||avg(a)-avg(b)||a.name.localeCompare(b.name))
+    .map(p=>({uid:p.uid,name:p.name,pts:p.pts,meta:`${p.played} played · ${p.won?'avg '+(p.goes/p.won).toFixed(1):'avg –'}`}));
 }
 
 function inviteBanner(){
@@ -1346,7 +1349,7 @@ async function fillBoard(el){
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
   if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: ${T1} and ${T2}.</p>`+html;
-  if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from codes and challenges since each player joined ${esc(lg.name)}.</p>`+html;
+  if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from daily codes since each player joined ${esc(lg.name)} (challenges don't count here). Avg is the average number of goes to crack a code.</p>`+html;
   if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
   if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
   if(!user)html+=`<div class="label" style="margin-top:18px">Get on the board</div>`+signInHTML();
