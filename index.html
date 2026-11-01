@@ -745,8 +745,8 @@ async function fillChat(el,force){
   /* Moderator: reported comments from earlier codes, which aren't in this code's chat. */
   const earlier=mod?Object.values(older).filter(x=>!rows.some(r=>r.id===x.cid)):[];
   const modBox=earlier.length?`<div class="label">Reported from earlier codes</div><ol class="chat">${earlier.map(x=>`<li class="flagged">
-      <div class="chat-h"><b>${esc(x.name)}</b><span>Code No. ${x.round-R_BASE}</span></div><div class="chat-t">${esc(x.text)}</div>
-      <div class="chat-a"><span class="flag">⚑ Reported ×${reports[x.cid].length}</span><button class="link" data-del="${x.cid}">Delete</button><button class="link" data-keep="${x.cid}">Keep it</button><button class="link" data-ban="${x.uid}" data-name="${esc(x.name)}">Stop posting</button></div></li>`).join('')}</ol>`:'';
+      <div class="chat-h"><b>${esc(x.name)}</b><span>${x.league?'League chat':'Code No. '+(x.round-R_BASE)}</span></div><div class="chat-t">${esc(x.text)}</div>
+      <div class="chat-a"><span class="flag">⚑ Reported ×${reports[x.cid].length}</span><button class="link" ${x.league?'data-ldel':'data-del'}="${x.cid}">Delete</button><button class="link" data-keep="${x.cid}">Keep it</button><button class="link" data-ban="${x.uid}" data-name="${esc(x.name)}">Stop posting</button></div></li>`).join('')}</ol>`:'';
   el.innerHTML=modBox+list+form;
   const ta=el.querySelector('#chatTxt');
   if(ta)ta.addEventListener('input',()=>{el.querySelector('#chatLeft').textContent=CHAT_MAX-ta.value.length});
@@ -767,6 +767,12 @@ async function fillChat(el,force){
     try{await db.collection('comments').doc(b.dataset.del).delete();
       if(mod)(reports[b.dataset.del]||[]).forEach(id=>db.collection('reports').doc(id).delete().catch(()=>{}));
       toast('Deleted');fillChat(el,true)}
+    catch(x){console.warn(x);b.disabled=false;toast('Could not delete it')}
+  }));
+  el.querySelectorAll('[data-ldel]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;
+    try{await db.collection('lchat').doc(b.dataset.ldel).delete().catch(()=>{});
+      await Promise.all((reports[b.dataset.ldel]||[]).map(id=>db.collection('reports').doc(id).delete().catch(()=>{})));toast('Deleted');fillChat(el,true)}
     catch(x){console.warn(x);b.disabled=false;toast('Could not delete it')}
   }));
   el.querySelectorAll('[data-rep]').forEach(b=>b.addEventListener('click',async()=>{
@@ -807,7 +813,7 @@ async function fillLeagueChat(el,id,name){
       const spoil=hide&&r.round===RKEY&&r.uid!==user.uid;
       return `<li class="${r.uid===user.uid?'me':''}"><div class="chat-h"><b>${esc(r.name)}</b><span>${ago(r.ts)}</span></div>
       ${spoil?`<button class="spoiler" type="button" data-show>Sent during this code. Might be a spoiler: tap to show<span hidden>${esc(r.text)}</span></button>`:`<div class="chat-t">${esc(r.text)}</div>`}
-      ${r.uid===user.uid||canMod?`<div class="chat-a"><button class="link" data-del="${r.id}">Delete</button></div>`:''}</li>`}).join('')}</ol>`
+      <div class="chat-a">${r.uid===user.uid||canMod?`<button class="link" data-del="${r.id}">Delete</button>`:''}${r.uid!==user.uid&&!isMod()?`<button class="link" data-rep="${r.id}">Report</button>`:''}</div></li>`}).join('')}</ol>`
     :`<p class="muted">No messages yet. Say hello to the league.</p>`;
   el.innerHTML=list+`<form class="form" id="lcForm" novalidate><textarea id="chatTxt" maxlength="${CHAT_MAX}" rows="2" placeholder="Message ${esc(name||'the league')}"></textarea>
     <div class="chat-send"><span class="muted" id="chatLeft">${CHAT_MAX}</span><button class="btn primary small" id="lcPost" type="submit">Send</button></div><div class="err" id="lcErr"></div></form>
@@ -826,6 +832,11 @@ async function fillLeagueChat(el,id,name){
   });
   el.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',async()=>{
     b.disabled=true;try{await db.collection('lchat').doc(b.dataset.del).delete();fillLeagueChat(el,id,name)}catch(x){console.warn(x);b.disabled=false;toast('Could not delete it')}
+  }));
+  el.querySelectorAll('[data-rep]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;const r=rows.find(x=>x.id===b.dataset.rep);
+    try{await db.collection('reports').doc(`${r.id}_${user.uid}`).set({cid:r.id,league:id,round:r.round||RKEY,uid:r.uid,name:r.name,text:r.text,by:user.uid,ts:FV().serverTimestamp()});b.textContent='Reported';toast('Thanks. The owner will take a look.')}
+    catch(x){console.warn(x);b.disabled=false;toast('Could not report it')}
   }));
 }
 

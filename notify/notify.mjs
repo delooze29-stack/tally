@@ -135,6 +135,24 @@ if (reports.length) {
   });
 }
 
+// ---- 2d. Player milestones: tell the owner when it's time to review the safety risk assessment ----
+// Checked once a day at 6pm with a cheap count (no player documents read).
+if (lp.h >= 18 && lp.h < 20 && meta.lastCountDay !== `${lp.y}-${lp.m}-${lp.d}`) {
+  update.lastCountDay = `${lp.y}-${lp.m}-${lp.d}`;
+  const n = (await db.collection('players').count().get()).data().count;
+  const step = [100, 250, 500, 1000, 2500, 5000, 10000].filter(x => n >= x).pop() || 0;
+  if (step > (meta.lastMilestone || 0)) {
+    update.lastMilestone = step;
+    const modDoc = await db.collection('names').doc('mathew').get();
+    const mod = modDoc.exists && (await players()).find(d => d.uid === modDoc.data().uid);
+    if (mod) await send(mod, {
+      title: `🎉 Tally has passed ${step} players`,
+      body: step >= 500 ? 'Time to review your online safety risk assessment, as it says in the doc.' : 'Nice one! Keep an eye on the chats as it grows.',
+      tag: 'milestone', url: SITE
+    });
+  }
+}
+
 // ---- 3. 6pm round-up: challenges waiting for you ----
 const today = `${lp.y}-${String(lp.m).padStart(2, '0')}-${String(lp.d).padStart(2, '0')}`;
 if (lp.h >= 18 && lp.h < 20 && meta.lastDigest !== today) {
