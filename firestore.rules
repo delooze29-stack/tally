@@ -123,7 +123,7 @@ service cloud.firestore {
     match /reports/{id} {
       allow create: if request.auth != null
         && id == request.resource.data.cid + '_' + request.auth.uid
-        && request.resource.data.keys().hasOnly(['cid', 'round', 'uid', 'name', 'text', 'by', 'ts'])
+        && request.resource.data.keys().hasOnly(['cid', 'round', 'uid', 'name', 'text', 'by', 'ts', 'league'])
         && request.resource.data.by == request.auth.uid
         && request.resource.data.ts == request.time;
       allow read, delete: if isMod();

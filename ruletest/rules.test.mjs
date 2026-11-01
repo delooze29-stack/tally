@@ -159,6 +159,9 @@ await t('owner A deletes B message', () => deleteDoc(doc(db('A'), 'lchat', 'm1')
 await t('B deletes own message', async () => { await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'lchat', 'b1'), { league: 'LC', uid: 'B', name: 'Bob', round: 1, text: 'x', ts: new Date() })); return deleteDoc(doc(db('B'), 'lchat', 'b1')); }, true);
 await t('moderator deletes in any league', () => deleteDoc(doc(db('M'), 'lchat', 'm2')), true);
 
+await t('A reports a league chat message', () => setDoc(doc(db('A'), 'reports', 'lm9_A'), { cid: 'lm9', league: 'LC', round: 100017, uid: 'B', name: 'Bob', text: 'hi', by: 'A', ts: serverTimestamp() }), true);
+await t('report with unknown field still blocked', () => setDoc(doc(db('A'), 'reports', 'lm8_A'), { cid: 'lm8', league: 'LC', round: 1, uid: 'B', name: 'Bob', text: 'hi', by: 'A', ts: serverTimestamp(), extra: 1 }), false);
+
 await env.cleanup();
 const txt = `${fails ? 'FAILED' : 'ALL PASSED'} (${out.length - fails}/${out.length})\n` + out.join('\n') + '\n';
 fs.writeFileSync('results.txt', txt); console.log(txt);
