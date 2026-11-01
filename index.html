@@ -245,6 +245,7 @@ ol.chat li.flagged{border-left:4px solid var(--bad)}
 a.home{color:inherit;text-decoration:none;display:block}
 a.home:active h1{transform:rotate(-1.5deg) translateY(1px)}
 .shedlink{display:block;padding:10px 12px;border-radius:10px;background:#2a4333;color:#f3e6c4;font-weight:700;text-decoration:none;font-size:14px}
+.spoiler{display:block;width:100%;text-align:left;margin-top:4px;border:1px dashed var(--line);background:repeating-linear-gradient(135deg,rgba(0,0,0,.04) 0 6px,transparent 6px 12px);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--muted)}
 /* ================= The Puzzle Shed look =================
    Timber walls, a painted sign for the title, a chalkboard for the board, wooden number blocks
    and paper notes for the windows. Same in light and dark mode, like the shed itself. */
@@ -784,6 +785,50 @@ async function fillChat(el,force){
   }));
 }
 
+/* ---------- League chat ----------
+   A private chat for each league: only its members can read or post. Messages sent while a code is live
+   are blurred for anyone who hasn't finished that code yet (tap to show), so nobody gets spoilers.
+   Players delete their own messages; the league owner and the moderator can delete any. */
+const doneThisCode=()=>{if(S&&S.mode==='daily')return !!(S.done||S.remote);const d=store.get(dayKey());return !!(d&&d.n===ROUND&&(d.done||d.remote))};
+function showLeagueChat(id,name){
+  openSheet(`<h2>💬 ${esc(name||'League chat')}</h2><p class="muted" style="margin-top:-8px">Only members of this league can see this.</p><div id="lcBody" class="stack"><p class="muted">Loading…</p></div>`,sh=>fillLeagueChat(sh.querySelector('#lcBody'),id,name));
+}
+async function fillLeagueChat(el,id,name){
+  await authReady;
+  if(!user){el.innerHTML='<p>Sign in to see your league chat.</p>';return}
+  let lg,rows;
+  try{
+    const [d,q]=await Promise.all([db.collection('leagues').doc(id).get(),db.collection('lchat').where('league','==',id).get()]);
+    if(!d.exists){el.innerHTML='<p class="muted">This league no longer exists.</p>';return}
+    lg=d.data();rows=q.docs.map(x=>({id:x.id,...x.data()})).sort((a,b)=>tsMs(a.ts)-tsMs(b.ts)).slice(-80);
+  }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the chat. Check your connection.</p>';return}
+  const canMod=lg.owner===user.uid||isMod(), hide=!doneThisCode();
+  const list=rows.length?`<ol class="chat" id="lcList">${rows.map(r=>{
+      const spoil=hide&&r.round===RKEY&&r.uid!==user.uid;
+      return `<li class="${r.uid===user.uid?'me':''}"><div class="chat-h"><b>${esc(r.name)}</b><span>${ago(r.ts)}</span></div>
+      ${spoil?`<button class="spoiler" type="button" data-show>Sent during this code. Might be a spoiler: tap to show<span hidden>${esc(r.text)}</span></button>`:`<div class="chat-t">${esc(r.text)}</div>`}
+      ${r.uid===user.uid||canMod?`<div class="chat-a"><button class="link" data-del="${r.id}">Delete</button></div>`:''}</li>`}).join('')}</ol>`
+    :`<p class="muted">No messages yet. Say hello to the league.</p>`;
+  el.innerHTML=list+`<form class="form" id="lcForm" novalidate><textarea id="chatTxt" maxlength="${CHAT_MAX}" rows="2" placeholder="Message ${esc(name||'the league')}"></textarea>
+    <div class="chat-send"><span class="muted" id="chatLeft">${CHAT_MAX}</span><button class="btn primary small" id="lcPost" type="submit">Send</button></div><div class="err" id="lcErr"></div></form>
+    <button class="btn" id="lcBack">Back to the league</button>`;
+  const ls=el.querySelector('#lcList');if(ls)ls.scrollTop=ls.scrollHeight;
+  el.querySelectorAll('[data-show]').forEach(b=>b.addEventListener('click',()=>{const d=document.createElement('div');d.className='chat-t';d.textContent=b.querySelector('span').textContent;b.replaceWith(d)}));
+  const ta=el.querySelector('#chatTxt');ta.addEventListener('input',()=>{el.querySelector('#chatLeft').textContent=CHAT_MAX-ta.value.length});
+  el.querySelector('#lcBack').addEventListener('click',()=>showLeague(id));
+  el.querySelector('#lcForm').addEventListener('submit',async e=>{
+    e.preventDefault();const t=ta.value.trim(),err=el.querySelector('#lcErr'),b=el.querySelector('#lcPost');err.textContent='';if(!t)return;
+    b.disabled=true;
+    try{if(!player)await loadPlayer();
+      await db.collection('lchat').add({league:id,uid:user.uid,name:player.name,round:RKEY,text:t.slice(0,CHAT_MAX),ts:FV().serverTimestamp()});
+      fillLeagueChat(el,id,name)}
+    catch(x){console.warn(x);b.disabled=false;err.textContent=x.code==='permission-denied'?"Couldn't send. You need to be a member of this league.":'Could not send. Check your connection.'}
+  });
+  el.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;try{await db.collection('lchat').doc(b.dataset.del).delete();fillLeagueChat(el,id,name)}catch(x){console.warn(x);b.disabled=false;toast('Could not delete it')}
+  }));
+}
+
 /* ---------- Change password ---------- */
 function showChangePw(){
   openSheet(`<h2>Change password</h2>
@@ -1234,10 +1279,12 @@ async function fillLeague(el,id){
     <ul class="mlist">${lg.members.map(u=>`<li><span>${esc((joined[u]||{}).name||'Player')}${u===lg.owner?'<span class="tag">runs it</span>':''}${u===user.uid?'<span class="tag">you</span>':''}</span>${own&&u!==user.uid?`<button class="link" data-rm="${u}">Remove</button>`:''}</li>`).join('')}</ul>
     ${own?`${inv.length?`<div class="label">Invited, waiting to join</div><ul class="mlist">${inv.map(v=>`<li><span>${esc(v.name)}</span><button class="link" data-cancel="${v.id}">Cancel</button></li>`).join('')}</ul>`:''}
       <form class="form" id="lgInv" novalidate><div class="field"><label for="invName">Invite a player by nickname</label><div class="inline"><input id="invName" maxlength="16" autocapitalize="off" spellcheck="false" placeholder="Their Tally nickname"><button class="btn small" type="submit">Invite</button></div></div><div class="err" id="invErr"></div><div class="ok-msg" id="invOk" hidden></div></form>`:''}
-    <div class="actions"><button class="btn primary" id="lgTables">See tables</button><button class="btn" id="lgBack">All leagues</button></div>
+    <div class="actions"><button class="btn primary" id="lgTables">See tables</button><button class="btn" id="lgChat">💬 League chat</button></div>
+    <button class="btn" id="lgBack">All leagues</button>
     ${own?`<button class="link" id="lgDel" style="color:var(--bad)">Delete this league</button>`:`<button class="link" id="lgLeave" style="color:var(--bad)">Leave this league</button>`}`;
   el.querySelector('#lgTables').addEventListener('click',()=>{setScope(id);showBoard('today')});
   el.querySelector('#lgBack').addEventListener('click',showLeagues);
+  el.querySelector('#lgChat').addEventListener('click',()=>showLeagueChat(id,lg.name));
   const redo=()=>fillLeague(el,id);
   const sure=(b,label)=>{if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent=label;return false}return true};
   el.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',async()=>{
@@ -1289,7 +1336,9 @@ function showBoard(tab){
   const scope=user?`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],...myLeagues.map(l=>[l.id,l.name])].map(([v,l])=>`<option value="${v}"${v===(lg?lg.id:'')?' selected':''}>${esc(l)}</option>`).join('')}</select><button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button></div>`:'';
   const tabs=`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><span style="display:flex;gap:14px;white-space:nowrap"><button class="link" id="chPw">Change password</button><button class="link" id="signOut">Sign out</button></span></div>`:'';
-  openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>`,sh=>{
+  const lchat=lg?`<button class="btn chatbtn" id="lbChat" type="button">💬 ${esc(lg.name)} chat</button>`:'';
+  openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>${lchat}`,sh=>{
+    const lc=sh.querySelector('#lbChat');if(lc)lc.addEventListener('click',()=>showLeagueChat(lg.id,lg.name));
     sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
     const sc=sh.querySelector('#lbScope');if(sc)sc.addEventListener('change',()=>{setScope(sc.value);showBoard()});
     const lb=sh.querySelector('#lbLeagues');if(lb)lb.addEventListener('click',showLeagues);
