@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, updateDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({ projectId: 'demo-tally', firestore: { rules: fs.readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
 const DAY = Math.floor((Date.now() - 1792713600000) / 864e5) + 1;
@@ -136,6 +136,28 @@ await t('Mathew clears report', () => deleteDoc(doc(db('M'), 'reports', 'cB_A'))
 await t('A deletes own comment', async () => { const id = 'own1'; await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'comments', id), { uid: 'A', name: 'Ann', round: 100017, text: 'x', ts: new Date() })); return deleteDoc(doc(db('A'), 'comments', id)); }, true);
 // ---- push settings with the new-home marker
 await t('push doc with home marker', () => setDoc(doc(db('A'), 'push', 'A'), { codes: true, mine: true, daily: true, name: 'Ann', tokens: ['t1'], home: 'puzzleshed', updated: serverTimestamp() }), true);
+
+// ---- league chat
+await env.withSecurityRulesDisabled(async ctx => {
+  const d = ctx.firestore();
+  await setDoc(doc(d, 'leagues', 'LC'), { name: 'Chat L', owner: 'A', members: ['A', 'B'], created: new Date() });
+  await setDoc(doc(d, 'leagues', 'LX'), { name: 'Other', owner: 'C', members: ['C'], created: new Date() });
+  await setDoc(doc(d, 'lchat', 'm1'), { league: 'LC', uid: 'B', name: 'Bob', round: 100017, text: 'hi', ts: new Date() });
+  await setDoc(doc(d, 'lchat', 'm2'), { league: 'LX', uid: 'C', name: 'Cat', round: 100017, text: 'secret', ts: new Date() });
+});
+const lmsg = (u, lid, extra = {}) => () => setDoc(doc(db(u), 'lchat', 'n' + u + Math.random()), { league: lid, uid: u, name: { A: 'Ann', B: 'Bob', C: 'Cat' }[u], round: 100017, text: 'go on then', ts: serverTimestamp(), ...extra });
+await t('member A posts in league chat', lmsg('A', 'LC'), true);
+await t('non-member C cannot post in LC', lmsg('C', 'LC'), false);
+await t('A cannot post as Bob', lmsg('A', 'LC', { name: 'Bob' }), false);
+await t('A cannot post 281 chars', lmsg('A', 'LC', { text: 'x'.repeat(281) }), false);
+await t('member B lists LC chat', () => getDocs(query(collection(db('B'), 'lchat'), where('league', '==', 'LC'))), true);
+await t('non-member C cannot list LC chat', () => getDocs(query(collection(db('C'), 'lchat'), where('league', '==', 'LC'))), false);
+await t('signed-out cannot list LC chat', () => getDocs(query(collection(env.unauthenticatedContext().firestore(), 'lchat'), where('league', '==', 'LC'))), false);
+await t('A cannot read other league message', () => getDoc(doc(db('A'), 'lchat', 'm2')), false);
+await t('B cannot delete owner-less message of A? (A posts, B deletes) blocked', async () => { await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'lchat', 'a1'), { league: 'LC', uid: 'A', name: 'Ann', round: 1, text: 'x', ts: new Date() })); return deleteDoc(doc(db('B'), 'lchat', 'a1')); }, false);
+await t('owner A deletes B message', () => deleteDoc(doc(db('A'), 'lchat', 'm1')), true);
+await t('B deletes own message', async () => { await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'lchat', 'b1'), { league: 'LC', uid: 'B', name: 'Bob', round: 1, text: 'x', ts: new Date() })); return deleteDoc(doc(db('B'), 'lchat', 'b1')); }, true);
+await t('moderator deletes in any league', () => deleteDoc(doc(db('M'), 'lchat', 'm2')), true);
 
 await env.cleanup();
 const txt = `${fails ? 'FAILED' : 'ALL PASSED'} (${out.length - fails}/${out.length})\n` + out.join('\n') + '\n';
