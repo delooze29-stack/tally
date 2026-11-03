@@ -147,7 +147,7 @@ if (lp.h >= 18 && lp.h < 20 && meta.lastCountDay !== `${lp.y}-${lp.m}-${lp.d}`) 
     const mod = modDoc.exists && (await players()).find(d => d.uid === modDoc.data().uid);
     if (mod) await send(mod, {
       title: `🎉 Tally has passed ${step} players`,
-      body: step >= 500 ? 'Time to review your online safety risk assessment, as it says in the doc.' : 'Nice one! Keep an eye on the chats as it grows.',
+      body: step >= 1000 ? 'Time to register the name as a trade mark, look at setting up as a business, and review your safety risk assessment.' : step >= 500 ? 'Time to review your online safety risk assessment, as it says in the doc.' : 'Nice one! Keep an eye on the chats as it grows.',
       tag: 'milestone', url: SITE
     });
   }
