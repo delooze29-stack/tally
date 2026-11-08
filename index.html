@@ -246,6 +246,7 @@ a.home{color:inherit;text-decoration:none;display:block}
 a.home:active h1{transform:rotate(-1.5deg) translateY(1px)}
 .shedlink{display:block;padding:10px 12px;border-radius:10px;background:#2a4333;color:#f3e6c4;font-weight:700;text-decoration:none;font-size:14px}
 .spoiler{display:block;width:100%;text-align:left;margin-top:4px;border:1px dashed var(--line);background:repeating-linear-gradient(135deg,rgba(0,0,0,.04) 0 6px,transparent 6px 12px);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--muted)}
+.cluechat{flex:none;border:none;border-radius:8px;padding:6px 10px;font:inherit;font-weight:700;font-size:13px;background:#2a4333;color:#f3e6c4;cursor:pointer}
 /* ================= The Puzzle Shed look =================
    Timber walls, a painted sign for the title, a chalkboard for the board, wooden number blocks
    and paper notes for the windows. Same in light and dark mode, like the shed itself. */
@@ -487,7 +488,16 @@ function draw(){
   }
   drawCurrent();drawKeys();renderClock();
 }
+/* Once today's code is finished, a Chat button sits in the clue bar, so the chat is easy to find again. */
+function updChat(){
+  let b=$('clueChat');const on=S.mode==='daily'&&!!(S.done||S.remote);
+  if(!b&&on){b=document.createElement('button');b.id='clueChat';b.type='button';b.className='cluechat';b.textContent='💬 Chat';
+    b.addEventListener('click',showChat);$('clueLabel').before(b)}
+  if(b)b.hidden=!on;
+  $('clueLabel').hidden=on;
+}
 function drawClue(){
+  updChat();
   const el=$('clueText');
   if(S.mode!=='daily'||S.clueUsed||S.done){el.textContent=S.clue;return}
   /* Free for the last two goes: no points taken off. */
@@ -541,7 +551,7 @@ function submit(){
   const r=S.guesses.length-1,res=score(g,S.code);
   S.won=res.state.every(s=>s==='hit');S.done=S.won||S.guesses.length===S.max;
   if(S.done)stopClock();
-  persist();renderClock();if(S.done&&S.mode==='daily'){record();postScore()}
+  persist();renderClock();if(S.done&&S.mode==='daily'){record();postScore();updChat()}
   if(S.mode==='challenge'&&user)saveAttempt();
   busy=true;
   const tiles=row.children,step=RM?0:220;
