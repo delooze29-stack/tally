@@ -162,12 +162,12 @@ const dayOf = r => Math.floor((r - 1) / 2);              // rounds 2d+1 (6am) an
 async function heldSet(rkey) {
   const [q, cl] = await Promise.all([db.collection('scores').where('day', '>=', rkey - 13).where('day', '<=', rkey).get(), db.collection('clears').get()]);
   const cleared = {}; cl.docs.forEach(d => cleared[d.id] = +d.data().day || 0);
-  const n = {}; q.docs.forEach(d => { const x = d.data(); if (x.won && x.guesses === 1 && x.day - R_BASE > (cleared[x.uid] || 0)) n[x.uid] = (n[x.uid] || 0) + 1; });
+  const n = {}; q.docs.forEach(d => { const x = d.data(); if (x.won && x.guesses === 1 && x.day - R_BASE > (cleared[x.uid] || 0)) n[x.uid] = (n[x.uid] || 0) + (x.secs > 0 && x.secs < 10 ? 2 : 1); });
   return new Set(Object.keys(n).filter(u => n[u] >= LUCKY_HOLD));
 }
 async function codeWinners(r) {
   const rkey = R_BASE + r, held = await heldSet(rkey);
-  const sc = (await db.collection('scores').where('day', '==', rkey).get()).docs.map(d => d.data()).filter(x => x.won && !held.has(x.uid));
+  const sc = (await db.collection('scores').where('day', '==', rkey).get()).docs.map(d => d.data()).filter(x => x.won && !held.has(x.uid) && !(x.secs > 0 && x.secs < 3 * x.guesses));   // too fast to be real: no bonus
   if (!sc.length) return [];
   const key = x => [x.guesses, x.secs || 1e9];
   sc.sort((a, b) => key(a)[0] - key(b)[0] || key(a)[1] - key(b)[1]);

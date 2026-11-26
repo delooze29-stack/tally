@@ -1209,13 +1209,18 @@ async function loadLucky(force){
   ]);
   const cleared={};cl.docs.forEach(d=>cleared[d.id]=+d.data().day||0);
   const lucky={};
-  q.docs.forEach(d=>{const x=d.data();if(x.won&&x.guesses===1&&x.day-R_BASE>(cleared[x.uid]||0))lucky[x.uid]=(lucky[x.uid]||0)+1});
+  q.docs.forEach(d=>{const x=d.data();if(x.won&&x.guesses===1&&x.day-R_BASE>(cleared[x.uid]||0))lucky[x.uid]=(lucky[x.uid]||0)+luckyWeight(x)});
   luckyCache=lucky;luckyAt=Date.now();return lucky;
 }
 const isHeld=(lucky,uid)=>(lucky[uid]||0)>=LUCKY_HOLD;
-const HOLD_MSG=`<div class="note bad"><strong>Your account is on hold.</strong> You've cracked the code first time ${LUCKY_HOLD} times in 7 days, which is about a 1 in 125 billion chance. Your scores won't show on the leaderboards and you can't play challenges for now. If this is a mistake, contact the game's owner.</div>`;
-const WARN_MSG=`<div class="note warn"><strong>That's ${LUCKY_WARN} first-guess wins in 7 days.</strong> The odds of that are about 1 in 25 million. One more this week and your account goes on hold.</div>`;
-const LUCKY_MSG=`<div class="note ok">First-guess win 🍀 That's about a 1 in 5,000 chance. It shows with a clover on today's leaderboard.</div>`;
+/* Fair play: a first-guess win in under 10 seconds counts as 2 towards the hold. And a crack faster than
+   3 seconds a guess is too fast to be real: it gets a 🚩 and can't win the ⭐ bonus or Fastest crack. */
+const FAST_FIRST_SECS=10, MIN_SECS_PER_GUESS=3;
+const luckyWeight=x=>x.secs>0&&x.secs<FAST_FIRST_SECS?2:1;
+const tooFast=x=>!!(x.won&&x.secs>0&&x.secs<MIN_SECS_PER_GUESS*x.guesses);
+const HOLD_MSG=`<div class="note bad"><strong>Your account is on hold.</strong> You've had too many first-guess wins in 7 days (ones in under ${FAST_FIRST_SECS} seconds count double). That's far too unlikely to be luck. Your scores won't show on the leaderboards and you can't play challenges for now. If this is a mistake, contact the game's owner.</div>`;
+const WARN_MSG=`<div class="note warn"><strong>That's ${LUCKY_WARN} fair-play strikes in 7 days.</strong> Each first-guess win is a strike, and one in under ${FAST_FIRST_SECS} seconds counts as two. One more this week and your account goes on hold.</div>`;
+const LUCKY_MSG=`<div class="note ok">First-guess win 🍀 That's about a 1 in 100,000 chance. It shows with a clover on today's leaderboard.</div>`;
 
 /* ---------- Leaderboard ---------- */
 /* ---------- Private leagues ----------
@@ -1305,7 +1310,7 @@ async function fillWalls(box,w,bon,lucky){
   const P={};const pl=(uid,name)=>P[uid]||(P[uid]={uid,name,pts:0,codes:0,won:0,goes:0,miss:0,clue:0,stars:0});
   sc.forEach(x=>{const p=pl(x.uid,x.name);p.pts+=x.points||0;p.codes++;if(x.won){p.won++;p.goes+=x.guesses}else p.miss++;if(x.clue)p.clue++});
   bon.filter(x=>x.round>=a&&x.round<=b&&P[x.uid]).forEach(x=>{P[x.uid].pts+=x.pts||0;if(x.kind==='code')P[x.uid].stars++});
-  const ps=Object.values(P), timed=sc.filter(x=>x.won&&x.secs>0);
+  const ps=Object.values(P), timed=sc.filter(x=>x.won&&x.secs>0&&!tooFast(x));
   const top=(arr,f,min=1)=>{const v=arr.filter(p=>f(p)>=min);if(!v.length)return null;const m=Math.max(...v.map(f));return v.filter(p=>f(p)===m)};
   const low=(arr,f)=>{if(!arr.length)return null;const m=Math.min(...arr.map(f));return arr.filter(p=>f(p)===m)};
   const names=list=>list.slice(0,3).map(p=>esc(p.name)).join(', ')+(list.length>3?` +${list.length-3}`:'');
@@ -1498,8 +1503,8 @@ async function fillBoard(el){
       held=q.docs.map(d=>d.data()).filter(d=>isHeld(lucky,d.uid)).length;
       rows=q.docs.map(d=>d.data()).filter(d=>!isHeld(lucky,d.uid)).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
         
-        .map((d,i,arr)=>{const best=arr.filter(x=>x.won).sort((a,b)=>a.guesses-b.guesses||t(a)-t(b))[0];const lead=codeBack?won.has(d.uid):best&&d.won&&d.guesses===best.guesses&&t(d)===t(best);
-          return {uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':'')+(d.clue?' 💡':'')+(lead?' ⭐':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}});
+        .map((d,i,arr)=>{const best=arr.filter(x=>x.won&&!tooFast(x)).sort((a,b)=>a.guesses-b.guesses||t(a)-t(b))[0];const lead=codeBack?won.has(d.uid):best&&d.won&&!tooFast(d)&&d.guesses===best.guesses&&t(d)===t(best);
+          return {uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':'')+(d.clue?' 💡':'')+(lead?' ⭐':'')+(tooFast(d)?' 🚩':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}});
     }else if(lbTab==='day'){
       /* Today: both of today's codes added up per player. */
       const [q,lucky,bon]=await Promise.all([db.collection('scores').where('day','in',todayKeys()).get(),loadLucky(true).catch(()=>({})),loadBonus()]);
@@ -1547,7 +1552,7 @@ async function fillBoard(el){
     const nav=`<div class="codenav"><button type="button" class="icon" data-cb="1" ${codeBack>=CODE_BACK_MAX||r<=1?'disabled':''} aria-label="Previous code">‹</button>
       <div><b>${codeBack?'Code':'This code'} No. ${r}</b><small>${codeLabel(r)}${codeBack?` · answer <span class="ans">${dailyAnswer(r)}</span>`:' · still open'}</small></div>
       <button type="button" class="icon" data-cb="-1" ${codeBack?'':'disabled'} aria-label="Next code">›</button></div>`;
-    const note=rows.length?`<p class="muted" style="font-size:13px;margin:0">${codeBack?`⭐ won +${CODE_BONUS} pts for the fewest goes, then the fastest time.`:`⭐ Best so far: fewest goes, then fastest. When the code closes, the best wins +${CODE_BONUS} pts.`}</p>`:'';
+    const note=rows.length?`<p class="muted" style="font-size:13px;margin:0">${rows.some(r=>r.name.endsWith('🚩'))?'🚩 = too fast to be real (under 3 seconds a guess), so it can\'t win the ⭐. ':''}${codeBack?`⭐ won +${CODE_BONUS} pts for the fewest goes, then the fastest time.`:`⭐ Best so far: fewest goes, then fastest. When the code closes, the best wins +${CODE_BONUS} pts.`}</p>`:'';
     if(!rows.length&&codeBack)html='<p class="muted">Nobody played this code.</p>';
     html=nav+note+html;
   }
