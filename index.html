@@ -253,6 +253,14 @@ a.home:active h1{transform:rotate(-1.5deg) translateY(1px)}
 .divbtn b{font-size:15px}.divbtn small{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-top:1px}
 .divbtn>span:last-child{font-size:24px;color:var(--muted)}
 .divbtn.back{justify-content:center;background:var(--surface);border-color:var(--line);font-weight:700}
+.codenav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;padding:6px;border-radius:10px;background:var(--bg)}
+.codenav>div{text-align:center;line-height:1.25}.codenav b{font-size:14px}.codenav small{display:block;font-size:12px;color:var(--muted)}
+.codenav .icon{width:36px;height:36px;font-size:22px;line-height:1;display:grid;place-items:center;flex:none}.codenav .icon:disabled{opacity:.3}
+.codenav .ans{font-family:var(--mono);font-weight:800;letter-spacing:.15em;color:var(--ink)}
+.wall{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.wall li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--bg);font-size:14px;line-height:1.3}
+.wall.fame li{border-left:4px solid #d9a441}.wall.shame li{border-left:4px solid #9aa0a8}
+.wall .wi{font-size:22px;line-height:1}.wall small{display:block;color:var(--muted);font-size:12px}
 /* ================= The Puzzle Shed look =================
    Timber walls, a painted sign for the title, a chalkboard for the board, wooden number blocks
    and paper notes for the windows. Same in light and dark mode, like the shed itself. */
@@ -1284,7 +1292,35 @@ async function fillDivisions(el){
   const mv=W.moves?`<p class="muted" style="font-size:13px;margin:0">Last week: <b>▲ ${esc(W.moves.promoted.name)}</b> promoted, <b>▼ ${esc(W.moves.relegated.name)}</b> relegated.</p>`:'';
   el.innerHTML=`<p class="muted" style="font-size:13px;margin:0">This week's points (Monday to Sunday), including ⭐ bonuses. On Monday morning the bottom of Division 1 swaps with the top of Division 2.</p>${mv}
     <div class="label" style="margin-top:12px">🏅 Division 1</div>${list(d1,'d1')}
-    <div class="label" style="margin-top:14px">Division 2</div>${d2.length?list(d2,'d2'):'<p class="muted">Nobody else has played this week yet.</p>'}`;
+    <div class="label" style="margin-top:14px">Division 2</div>${d2.length?list(d2,'d2'):'<p class="muted">Nobody else has played this week yet.</p>'}
+    <div id="walls"><p class="muted" style="margin-top:16px">Loading last week's walls…</p></div>`;
+  fillWalls(el.querySelector('#walls'),wk-1,bon,lucky).catch(e=>{console.warn(e);const w=el.querySelector('#walls');if(w)w.innerHTML=''});
+}
+/* Last week's Wall of Fame and (light-hearted) Wall of Shame, worked out from that week's scores. */
+async function fillWalls(box,w,bon,lucky){
+  if(!box)return;
+  const [a,b]=weekRounds(w);
+  const sc=(await db.collection('scores').where('day','>=',a).where('day','<=',b).get()).docs.map(d=>d.data()).filter(x=>!isHeld(lucky,x.uid));
+  if(!sc.length){box.innerHTML='';return}
+  const P={};const pl=(uid,name)=>P[uid]||(P[uid]={uid,name,pts:0,codes:0,won:0,goes:0,miss:0,clue:0,stars:0});
+  sc.forEach(x=>{const p=pl(x.uid,x.name);p.pts+=x.points||0;p.codes++;if(x.won){p.won++;p.goes+=x.guesses}else p.miss++;if(x.clue)p.clue++});
+  bon.filter(x=>x.round>=a&&x.round<=b&&P[x.uid]).forEach(x=>{P[x.uid].pts+=x.pts||0;if(x.kind==='code')P[x.uid].stars++});
+  const ps=Object.values(P), timed=sc.filter(x=>x.won&&x.secs>0);
+  const top=(arr,f,min=1)=>{const v=arr.filter(p=>f(p)>=min);if(!v.length)return null;const m=Math.max(...v.map(f));return v.filter(p=>f(p)===m)};
+  const low=(arr,f)=>{if(!arr.length)return null;const m=Math.min(...arr.map(f));return arr.filter(p=>f(p)===m)};
+  const names=list=>list.slice(0,3).map(p=>esc(p.name)).join(', ')+(list.length>3?` +${list.length-3}`:'');
+  const fast=timed.length?timed.reduce((m,x)=>x.secs<m.secs?x:m):null, slow=timed.length?timed.reduce((m,x)=>x.secs>m.secs?x:m):null;
+  const regulars=ps.filter(p=>p.codes>=5), sharp=ps.filter(p=>p.won>=5);
+  const card=(icon,title,who,what)=>who?`<li><span class="wi">${icon}</span><span><b>${title}</b><br>${who}<small>${what}</small></span></li>`:'';
+  const tp=top(ps,p=>p.pts),st=top(ps,p=>p.stars),ev=top(ps,p=>p.codes),sh=sharp.length?low(sharp,p=>p.goes/p.won):null;
+  const ms=top(ps,p=>p.miss),cl=top(ps,p=>p.clue),lw=regulars.length>1?low(regulars,p=>p.pts):null;
+  const fame=[card('🏆','Top scorer',tp&&names(tp),tp&&`${tp[0].pts} pts`),card('⭐','Star collector',st&&names(st),st&&`${st[0].stars} best-on-code bonus${st[0].stars>1?'es':''}`),
+    card('⚡','Fastest crack',fast&&esc(fast.name),fast&&`${fmtTime(fast.secs)} on code No. ${fast.day-R_BASE}`),card('🎯','Sharpshooter',sh&&names(sh),sh&&`${(sh[0].goes/sh[0].won).toFixed(1)} goes a crack`),
+    card('📅','Ever-present',ev&&names(ev),ev&&`${ev[0].codes} codes played`)].join('');
+  const shame=[card('🐢','Slowest crack',slow&&esc(slow.name),slow&&`${fmtTime(slow.secs)} on code No. ${slow.day-R_BASE}`),card('💥','Most misses',ms&&names(ms),ms&&`${ms[0].miss} X/7${ms[0].miss>1?'s':''}`),
+    card('💡','Clue addict',cl&&names(cl),cl&&`${cl[0].clue} clue${cl[0].clue>1?'s':''} bought`),card('🥄','Wooden spoon',lw&&names(lw),lw&&`${lw[0].pts} pts from ${lw[0].codes} codes`)].join('');
+  box.innerHTML=`<div class="label" style="margin-top:18px">🏛️ Wall of Fame: last week</div><ul class="wall fame">${fame}</ul>
+    ${shame?`<div class="label" style="margin-top:14px">🙈 Wall of Shame: last week</div><ul class="wall shame">${shame}</ul>`:''}`;
 }
 function inviteBanner(){
   if(!myInvites.length)return '';
@@ -1411,7 +1447,11 @@ async function fillLeague(el,id){
   });
 }
 
-let lbTab='today', boardLeaguesLoaded=false;
+let lbTab='today', boardLeaguesLoaded=false, codeBack=0;   // codeBack: 0 = this code, 1 = the one before, ...
+const CODE_BACK_MAX=14;
+/* Label and answer for any daily code number. */
+function codeLabel(r){const d=new Date(Date.UTC(2026,9,23)+Math.floor((r-1)/2)*864e5);return `${d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'})} ${r%2?'am':'pm'}`}
+const dailyAnswer=r=>puzzle(r*7919+2026).code;
 function showBoard(tab){
   if(tab)lbTab=tab;
   const lg=scopeLeague();
@@ -1444,18 +1484,21 @@ async function fillBoard(el){
     return}
   if(!db){el.innerHTML='<p class="muted">The leaderboard is offline right now.</p>';return}
   if(lbScope==='__div')return fillDivisions(el);
+  if(lbTab!=='today')codeBack=0;
   let rows=[], held=0;
   const lg=scopeLeague();
   try{
     if(lg&&(lbTab==='all'||lbTab==='avg')){
       rows=await leagueAllTime(lg,await loadLucky().catch(()=>({})),lbTab);
     }else if(lbTab==='today'){
-      const [q,lucky]=await Promise.all([db.collection('scores').where('day','==',RKEY).get(),loadLucky(true).catch(()=>({}))]);
+      const rk=RKEY-codeBack;
+      const [q,lucky,bon]=await Promise.all([db.collection('scores').where('day','==',rk).get(),loadLucky(true).catch(()=>({})),codeBack?loadBonus():Promise.resolve([])]);
+      const won=new Set(bon.filter(b=>b.kind==='code'&&b.round===rk).map(b=>b.uid));
       const t=d=>d.secs||1e9;
       held=q.docs.map(d=>d.data()).filter(d=>isHeld(lucky,d.uid)).length;
       rows=q.docs.map(d=>d.data()).filter(d=>!isHeld(lucky,d.uid)).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
         
-        .map((d,i,arr)=>{const best=arr.filter(x=>x.won).sort((a,b)=>a.guesses-b.guesses||t(a)-t(b))[0];const lead=best&&d.won&&d.guesses===best.guesses&&t(d)===t(best);
+        .map((d,i,arr)=>{const best=arr.filter(x=>x.won).sort((a,b)=>a.guesses-b.guesses||t(a)-t(b))[0];const lead=codeBack?won.has(d.uid):best&&d.won&&d.guesses===best.guesses&&t(d)===t(best);
           return {uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':'')+(d.clue?' 💡':'')+(lead?' ⭐':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}});
     }else if(lbTab==='day'){
       /* Today: both of today's codes added up per player. */
@@ -1499,7 +1542,15 @@ async function fillBoard(el){
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${r.unranked?'–':pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
   if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: ${T1} and ${T2}. ⭐ = best on a code (+${CODE_BONUS}).</p>`+html;
-  if(lbTab==='today'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">⭐ Best so far: fewest goes, then fastest. When the code closes, the best wins +${CODE_BONUS} pts.</p>`+html;
+  if(lbTab==='today'){
+    const r=ROUND-codeBack;
+    const nav=`<div class="codenav"><button type="button" class="icon" data-cb="1" ${codeBack>=CODE_BACK_MAX||r<=1?'disabled':''} aria-label="Previous code">‹</button>
+      <div><b>${codeBack?'Code':'This code'} No. ${r}</b><small>${codeLabel(r)}${codeBack?` · answer <span class="ans">${dailyAnswer(r)}</span>`:' · still open'}</small></div>
+      <button type="button" class="icon" data-cb="-1" ${codeBack?'':'disabled'} aria-label="Next code">›</button></div>`;
+    const note=rows.length?`<p class="muted" style="font-size:13px;margin:0">${codeBack?`⭐ won +${CODE_BONUS} pts for the fewest goes, then the fastest time.`:`⭐ Best so far: fewest goes, then fastest. When the code closes, the best wins +${CODE_BONUS} pts.`}</p>`:'';
+    if(!rows.length&&codeBack)html='<p class="muted">Nobody played this code.</p>';
+    html=nav+note+html;
+  }
   if(!lg&&lbTab==='avg')html=`<p class="muted" style="font-size:13px;margin:0">Average points per code (a miss counts as 0, challenges don't count). Play at least ${EV_AVG_MIN} codes to be ranked.</p>`+html;
   if(lg&&lbTab==='avg')html=`<p class="muted" style="font-size:13px;margin:0">Average points per code since each player joined ${esc(lg.name)} (a miss counts as 0, challenges don't count). Play at least ${LG_AVG_MIN} codes to be ranked.</p>`+html;
   if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from daily codes since each player joined ${esc(lg.name)} (challenges don't count here). Avg is the average number of goes to crack a code.</p>`+html;
@@ -1507,6 +1558,7 @@ async function fillBoard(el){
   if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
   if(!user)html+=`<div class="label" style="margin-top:18px">Get on the board</div>`+signInHTML();
   el.innerHTML=html;
+  el.querySelectorAll('[data-cb]').forEach(b=>b.addEventListener('click',()=>{codeBack=Math.max(0,Math.min(CODE_BACK_MAX,codeBack+(+b.dataset.cb)));el.querySelector('.codenav').style.opacity=.5;fillBoard(el)}));
   mountSignIn(el,()=>showBoard());
 }
 /* Signed-in stats come from the player's saved scores, so they're the same on every phone. */
