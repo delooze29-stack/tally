@@ -153,6 +153,16 @@ service cloud.firestore {
         || isMod());
     }
 
+    // Bonus points and weekly divisions: worked out by the notification sender, read-only for players.
+    match /bonus/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /weekly/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Used only by the notification sender.
     match /meta/{doc} {
       allow read, write: if false;

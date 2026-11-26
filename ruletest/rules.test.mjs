@@ -162,6 +162,16 @@ await t('moderator deletes in any league', () => deleteDoc(doc(db('M'), 'lchat',
 await t('A reports a league chat message', () => setDoc(doc(db('A'), 'reports', 'lm9_A'), { cid: 'lm9', league: 'LC', round: 100017, uid: 'B', name: 'Bob', text: 'hi', by: 'A', ts: serverTimestamp() }), true);
 await t('report with unknown field still blocked', () => setDoc(doc(db('A'), 'reports', 'lm8_A'), { cid: 'lm8', league: 'LC', round: 1, uid: 'B', name: 'Bob', text: 'hi', by: 'A', ts: serverTimestamp(), extra: 1 }), false);
 
+// ---- bonus + weekly divisions: read-only
+await env.withSecurityRulesDisabled(async ctx => { const d = ctx.firestore();
+  await setDoc(doc(d, 'bonus', 'c100067_A'), { kind: 'code', round: 100067, uid: 'A', name: 'Ann', pts: 5 });
+  await setDoc(doc(d, 'weekly', 'w5'), { week: 5, div1: [] }); });
+await t('anyone reads bonus', () => getDoc(doc(env.unauthenticatedContext().firestore(), 'bonus', 'c100067_A')), true);
+await t('anyone reads weekly', () => getDoc(doc(env.unauthenticatedContext().firestore(), 'weekly', 'w5')), true);
+await t('player cannot award self bonus', () => setDoc(doc(db('A'), 'bonus', 'c100068_A'), { kind: 'code', round: 100068, uid: 'A', name: 'Ann', pts: 5 }), false);
+await t('player cannot change bonus', () => updateDoc(doc(db('A'), 'bonus', 'c100067_A'), { pts: 50 }), false);
+await t('player cannot edit divisions', () => setDoc(doc(db('A'), 'weekly', 'w5'), { week: 5, div1: [{ uid: 'A' }] }), false);
+
 await env.cleanup();
 const txt = `${fails ? 'FAILED' : 'ALL PASSED'} (${out.length - fails}/${out.length})\n` + out.join('\n') + '\n';
 fs.writeFileSync('results.txt', txt); console.log(txt);
