@@ -249,6 +249,10 @@ a.home:active h1{transform:rotate(-1.5deg) translateY(1px)}
 .cluechat{flex:none;border:none;border-radius:8px;padding:6px 10px;font:inherit;font-weight:700;font-size:13px;background:#2a4333;color:#f3e6c4;cursor:pointer}
 .zone{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;padding:1px 5px;border-radius:4px;vertical-align:middle}
 .zone.up{background:#e5f4e4;color:#1d7a46}.zone.down{background:#fbebeb;color:#b0412d}
+.divbtn{display:flex;align-items:center;justify-content:space-between;width:100%;height:auto;min-height:0;flex:none;line-height:1.25;text-align:left;margin:8px 0 10px;padding:10px 14px;background:linear-gradient(180deg,#fff6dc,#f6e6b8);border:1px solid #d9b25c}
+.divbtn b{font-size:15px}.divbtn small{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-top:1px}
+.divbtn>span:last-child{font-size:24px;color:var(--muted)}
+.divbtn.back{justify-content:center;background:var(--surface);border-color:var(--line);font-weight:700}
 /* ================= The Puzzle Shed look =================
    Timber walls, a painted sign for the title, a chalkboard for the board, wooden number blocks
    and paper notes for the windows. Same in light and dark mode, like the shed itself. */
@@ -1265,7 +1269,7 @@ async function fillDivisions(el){
   let doc,sc,bon,lucky;
   try{[doc,sc,bon,lucky]=await Promise.all([db.collection('weekly').doc('w'+wk).get(),
       db.collection('scores').where('day','>=',a).where('day','<=',b).get(),loadBonus(true),loadLucky().catch(()=>({}))]);}
-  catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the divisions. Check your connection.</p>';return}
+  catch(e){console.warn(e);el.innerHTML=e&&e.code==='permission-denied'?'<p class="muted">The weekly divisions are being switched on. Check back soon.</p>':'<p class="muted">Could not load the divisions. Check your connection.</p>';return}
   if(!doc.exists){el.innerHTML='<p class="muted">The weekly divisions are being set up. Check back in a few minutes.</p>';return}
   const W=doc.data(),t={};
   const row=(uid,name)=>t[uid]||(t[uid]={uid,name,pts:0,codes:0,stars:0});
@@ -1415,7 +1419,8 @@ function showBoard(tab){
   const tabList=lg?[['today','This code'],['day','Today'],['all','All time'],['avg','Average']]:[['today','Code'],['day','Today'],['all','All time'],['avg','Avg'],['me','Me']];
   const isDiv=lbScope==='__div', cur=isDiv?'__div':(lg?lg.id:'');
   const scope=`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],['__div','🏅 Weekly divisions'],...(user?myLeagues.map(l=>[l.id,l.name]):[])].map(([v,l])=>`<option value="${v}"${v===cur?' selected':''}>${esc(l)}</option>`).join('')}</select>${user?`<button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button>`:''}</div>`;
-  const tabs=isDiv?`${inviteBanner()}${scope}`:`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
+  const divBtn=isDiv?`<button class="btn divbtn back" id="lbDivBack" type="button">← Back to the leaderboard</button>`:`<button class="btn divbtn" id="lbDiv" type="button"><span>🏅 <b>Weekly divisions</b><small>Who's going up and down this week?</small></span><span aria-hidden="true">›</span></button>`;
+  const tabs=isDiv?`${inviteBanner()}${scope}${divBtn}`:`${inviteBanner()}${scope}${divBtn}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><span style="display:flex;gap:14px;white-space:nowrap"><button class="link" id="chPw">Change password</button><button class="link" id="signOut">Sign out</button></span></div>`:'';
   const lchat=lg?`<button class="btn chatbtn" id="lbChat" type="button">💬 ${esc(lg.name)} chat</button>`:'';
   openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>${lchat}`,sh=>{
@@ -1423,6 +1428,8 @@ function showBoard(tab){
     sh.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showBoard(b.dataset.tab)));
     const sc=sh.querySelector('#lbScope');if(sc)sc.addEventListener('change',()=>{setScope(sc.value);showBoard()});
     const lb=sh.querySelector('#lbLeagues');if(lb)lb.addEventListener('click',showLeagues);
+    const dv=sh.querySelector('#lbDiv');if(dv)dv.addEventListener('click',()=>{setScope('__div');showBoard()});
+    const db2=sh.querySelector('#lbDivBack');if(db2)db2.addEventListener('click',()=>{setScope('');showBoard()});
     mountInvites(sh,()=>showBoard());
     if(user&&!boardLeaguesLoaded){boardLeaguesLoaded=true;loadLeagues().then(()=>{if(modal&&$('lbBody'))showBoard()}).catch(e=>console.warn(e))}
     const cp=sh.querySelector('#chPw');if(cp)cp.addEventListener('click',showChangePw);
