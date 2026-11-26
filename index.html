@@ -1209,7 +1209,8 @@ async function leagueJoined(lg){
   return j;
 }
 /* All time in a league: points from codes and challenges since each member joined. */
-async function leagueAllTime(lg,lucky){
+const LG_AVG_MIN=3;
+async function leagueAllTime(lg,lucky,mode){
   /* League tables count daily codes only (not challenges), from when each player joined,
      with how many goes they take on average to crack a code. */
   const joined=await leagueJoined(lg), ids=lg.members.slice();
@@ -1220,7 +1221,15 @@ async function leagueAllTime(lg,lucky){
   snaps.forEach(q=>q.docs.forEach(d=>{const x=d.data(),p=tot[x.uid];if(!p)return;if(ms(x.ts)<((joined[x.uid]||{}).joined||0))return;
     p.pts+=x.points||0;p.played++;if(x.won){p.won++;p.goes+=x.guesses||0}if(x.name)p.name=x.name}));
   const avg=p=>p.won?p.goes/p.won:99;
-  return Object.values(tot).filter(p=>!isHeld(lucky,p.uid)).sort((a,b)=>b.pts-a.pts||avg(a)-avg(b)||a.name.localeCompare(b.name))
+  const list=Object.values(tot).filter(p=>!isHeld(lucky,p.uid));
+  if(mode==='avg'){
+    /* Average points per code played (a miss counts as 0). You need LG_AVG_MIN codes to be ranked, so one lucky game can't top it. */
+    const per=p=>p.played?p.pts/p.played:0, ok=p=>p.played>=LG_AVG_MIN;
+    return list.sort((a,b)=>(ok(b)-ok(a))||per(b)-per(a)||b.played-a.played||a.name.localeCompare(b.name))
+      .map(p=>({uid:p.uid,name:p.name,pts:ok(p)?per(p).toFixed(1):'–',unranked:!ok(p),
+        meta:ok(p)?`${p.played} played`:`${p.played}/${LG_AVG_MIN} played`}));
+  }
+  return list.sort((a,b)=>b.pts-a.pts||avg(a)-avg(b)||a.name.localeCompare(b.name))
     .map(p=>({uid:p.uid,name:p.name,pts:p.pts,meta:`${p.played} played · ${p.won?'avg '+(p.goes/p.won).toFixed(1):'avg –'}`}));
 }
 
@@ -1354,7 +1363,8 @@ function showBoard(tab){
   if(tab)lbTab=tab;
   const lg=scopeLeague();
   if(lg&&lbTab==='me')lbTab='today';
-  const tabList=lg?[['today','This code'],['day','Today'],['all','All time']]:[['today','This code'],['day','Today'],['all','All time'],['me','My stats']];
+  if(!lg&&lbTab==='avg')lbTab='all';
+  const tabList=lg?[['today','This code'],['day','Today'],['all','All time'],['avg','Average']]:[['today','This code'],['day','Today'],['all','All time'],['me','My stats']];
   const scope=user?`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],...myLeagues.map(l=>[l.id,l.name])].map(([v,l])=>`<option value="${v}"${v===(lg?lg.id:'')?' selected':''}>${esc(l)}</option>`).join('')}</select><button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button></div>`:'';
   const tabs=`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><span style="display:flex;gap:14px;white-space:nowrap"><button class="link" id="chPw">Change password</button><button class="link" id="signOut">Sign out</button></span></div>`:'';
@@ -1380,8 +1390,8 @@ async function fillBoard(el){
   let rows=[], held=0;
   const lg=scopeLeague();
   try{
-    if(lg&&lbTab==='all'){
-      rows=await leagueAllTime(lg,await loadLucky().catch(()=>({})));
+    if(lg&&(lbTab==='all'||lbTab==='avg')){
+      rows=await leagueAllTime(lg,await loadLucky().catch(()=>({})),lbTab);
     }else if(lbTab==='today'){
       const [q,lucky]=await Promise.all([db.collection('scores').where('day','==',RKEY).get(),loadLucky(true).catch(()=>({}))]);
       const t=d=>d.secs||1e9;
@@ -1417,9 +1427,10 @@ async function fillBoard(el){
   else{
     let pos=0,prev=null;
     html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
-      return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
+      return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${r.unranked?'–':pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
   if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: ${T1} and ${T2}.</p>`+html;
+  if(lg&&lbTab==='avg')html=`<p class="muted" style="font-size:13px;margin:0">Average points per code since each player joined ${esc(lg.name)} (a miss counts as 0, challenges don't count). Play at least ${LG_AVG_MIN} codes to be ranked.</p>`+html;
   if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from daily codes since each player joined ${esc(lg.name)} (challenges don't count here). Avg is the average number of goes to crack a code.</p>`+html;
   if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
   if(user&&luckyCache&&isHeld(luckyCache,user.uid))html=HOLD_MSG+html;
