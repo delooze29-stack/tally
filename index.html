@@ -247,6 +247,8 @@ a.home:active h1{transform:rotate(-1.5deg) translateY(1px)}
 .shedlink{display:block;padding:10px 12px;border-radius:10px;background:#2a4333;color:#f3e6c4;font-weight:700;text-decoration:none;font-size:14px}
 .spoiler{display:block;width:100%;text-align:left;margin-top:4px;border:1px dashed var(--line);background:repeating-linear-gradient(135deg,rgba(0,0,0,.04) 0 6px,transparent 6px 12px);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--muted)}
 .cluechat{flex:none;border:none;border-radius:8px;padding:6px 10px;font:inherit;font-weight:700;font-size:13px;background:#2a4333;color:#f3e6c4;cursor:pointer}
+.zone{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;padding:1px 5px;border-radius:4px;vertical-align:middle}
+.zone.up{background:#e5f4e4;color:#1d7a46}.zone.down{background:#fbebeb;color:#b0412d}
 /* ================= The Puzzle Shed look =================
    Timber walls, a painted sign for the title, a chalkboard for the board, wooden number blocks
    and paper notes for the windows. Same in light and dark mode, like the shed itself. */
@@ -372,6 +374,25 @@ const LOCAL_UK=(()=>{try{return ukHourAt(6)===new Date(ukHourAt(6)).setHours(6,0
 const T1=LOCAL_UK?'6am':fmtHour(ukHourAt(6)), T2=LOCAL_UK?'8pm':fmtHour(ukHourAt(20));
 const codeTimes=()=>{if(LOCAL_UK)return '6am and 8pm';const a=new Date(ukHourAt(6)).getHours(),b=new Date(ukHourAt(20)).getHours();return `${a<=b?T1:T2} and ${a<=b?T2:T1} your time`};
 /* Today's two codes (UK date): the 6am one and the 8pm one. */
+
+/* ---------- Bonuses and weekly divisions ----------
+   The notification sender (every 15 minutes) awards the bonuses after each code closes and sets up each
+   week's divisions; the game only reads them. Best on a code (fewest goes, then fastest) = +5, best on
+   both codes of a day = +10 more. They count on All time, league All time, Today and the divisions,
+   but not on the Avg tables. */
+const CODE_BONUS=5, DAY_BONUS=10, DIV1_SIZE=5;
+let bonusCache=null,bonusAt=0;
+async function loadBonus(force){
+  if(!db)return [];
+  if(!force&&bonusCache&&Date.now()-bonusAt<20000)return bonusCache;
+  try{bonusCache=(await db.collection('bonus').get()).docs.map(d=>d.data())}catch(e){console.warn(e);bonusCache=bonusCache||[]}
+  bonusAt=Date.now();return bonusCache;
+}
+const bonusSum=(uid,list,since=0)=>(list||[]).reduce((t,b)=>t+(b.uid===uid&&tsMs(b.ts)>=since?(b.pts||0):0),0);
+const dayIdx=()=>{const p=londonParts(Date.now());return Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5)};
+const weekOfDay=d=>Math.floor((d+4)/7);                // weeks run Monday to Sunday
+const weekNow=()=>weekOfDay(Math.floor((ROUND-1)/2));  // changes over at Monday 6am, when Sunday's 8pm code closes
+const weekRounds=w=>{const d0=7*w-4;return [R_BASE+2*d0+1,R_BASE+2*(d0+6)+2]};
 function todayKeys(){const p=londonParts(Date.now());const d=Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(2026,9,23))/864e5);return [R_BASE+2*d+1,R_BASE+2*d+2]}
 const isEvening=()=>ROUND%2===0;
 function msToNext(){const now=Date.now();let lo=now,hi=now+13*36e5;while(hi-lo>1000){const mid=(lo+hi)/2;if(roundAt(mid)>ROUND)hi=mid;else lo=mid}return hi-now}
@@ -724,7 +745,7 @@ async function loadChat(force){
   const rows=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>tsMs(a.ts)-tsMs(b.ts));
   chatCache={r:RKEY,rows};chatAt=Date.now();return rows;
 }
-const tsMs=t=>t&&t.toMillis?t.toMillis():(+t||Date.now());
+function tsMs(t){return t&&t.toMillis?t.toMillis():(t&&t.seconds?t.seconds*1000:(+t||0))}
 async function chatCount(){try{return (await loadChat()).length}catch(e){return 0}}
 function ago(t){const m=Math.max(0,Math.round((Date.now()-tsMs(t))/6e4));return m<1?'just now':m<60?m+'m ago':Math.round(m/60)+'h ago'}
 function showChat(){
@@ -887,6 +908,8 @@ function showHelp(){
     <li>Crack the hidden 5-digit code in 7 guesses. Digits can repeat and the code can start with 0.</li>
     <li>Each code has a maths clue, like "the 2nd and 4th digits multiply to 24". It's hidden to start with: showing it costs 2 points off that code's score, but it's free for your last two goes. Players who paid for it get a 💡 on the leaderboard.</li>
     <li>After each guess the tiles change colour, and grey and yellow tiles show an arrow for that spot.</li>
+    <li>⭐ <b>Bonus points:</b> the best player on each code (fewest goes, then fastest time) gets +5 when it closes. Best on both of a day's codes gets +10 more: 20 in all.</li>
+    <li>🏅 <b>Weekly divisions:</b> pick "Weekly divisions" on the 🏆 leaderboard. Division 1 has 5 players. Each Monday the bottom of Division 1 swaps with the top of Division 2.</li>
     <li>Start a private league for friends or work from the trophy button: 🏆 Leagues.</li>
     <li>Tap the 🔔 to get a notification when each new code is ready.</li>
     <li>Tap the crossed swords to set your own code as a challenge, or take on someone else's (up to 5 a day). Points are staked, so the winner takes them. A timer shows how long you took.</li>
@@ -1199,7 +1222,7 @@ async function loadLeagues(){
     db.collection('invites').where('uid','==',user.uid).get()]);
   myLeagues=l.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
   myInvites=i.docs.map(d=>({id:d.id,...d.data()}));
-  if(lbScope&&!myLeagues.some(x=>x.id===lbScope))setScope('');
+  if(lbScope&&lbScope!=='__div'&&!myLeagues.some(x=>x.id===lbScope))setScope('');
 }
 function setScope(id){lbScope=id;try{localStorage.setItem('tally.lbScope',id)}catch(e){}}
 const scopeLeague=()=>myLeagues.find(x=>x.id===lbScope)||null;
@@ -1221,6 +1244,7 @@ async function leagueAllTime(lg,lucky,mode){
   snaps.forEach(q=>q.docs.forEach(d=>{const x=d.data(),p=tot[x.uid];if(!p)return;if(ms(x.ts)<((joined[x.uid]||{}).joined||0))return;
     p.pts+=x.points||0;p.played++;if(x.won){p.won++;p.goes+=x.guesses||0}if(x.name)p.name=x.name}));
   const avg=p=>p.won?p.goes/p.won:99;
+  if(mode!=='avg'){const bon=await loadBonus();ids.forEach(u=>{const p=tot[u];if(p){p.pts+=bonusSum(u,bon,(joined[u]||{}).joined||0);p.stars=bon.filter(b=>b.uid===u&&b.kind==='code'&&tsMs(b.ts)>=((joined[u]||{}).joined||0)).length}})}
   const list=Object.values(tot).filter(p=>!isHeld(lucky,p.uid));
   if(mode==='avg'){
     /* Average points per code played (a miss counts as 0). You need LG_AVG_MIN codes to be ranked, so one lucky game can't top it. */
@@ -1230,9 +1254,34 @@ async function leagueAllTime(lg,lucky,mode){
         meta:ok(p)?`${p.played} played`:`${p.played}/${LG_AVG_MIN} played`}));
   }
   return list.sort((a,b)=>b.pts-a.pts||avg(a)-avg(b)||a.name.localeCompare(b.name))
-    .map(p=>({uid:p.uid,name:p.name,pts:p.pts,meta:`${p.played} played · ${p.won?'avg '+(p.goes/p.won).toFixed(1):'avg –'}`}));
+    .map(p=>({uid:p.uid,name:p.name,pts:p.pts,meta:`${p.played} played · ${p.won?'avg '+(p.goes/p.won).toFixed(1):'avg –'}${p.stars?` · ⭐${p.stars}`:''}`}));
 }
 
+
+/* Weekly divisions: Division 1 is 5 players; Division 2 is everyone else who plays that week.
+   Each Monday at 6am the bottom of Division 1 swaps with the top of Division 2. */
+async function fillDivisions(el){
+  const wk=weekNow(),[a,b]=weekRounds(wk);
+  let doc,sc,bon,lucky;
+  try{[doc,sc,bon,lucky]=await Promise.all([db.collection('weekly').doc('w'+wk).get(),
+      db.collection('scores').where('day','>=',a).where('day','<=',b).get(),loadBonus(true),loadLucky().catch(()=>({}))]);}
+  catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the divisions. Check your connection.</p>';return}
+  if(!doc.exists){el.innerHTML='<p class="muted">The weekly divisions are being set up. Check back in a few minutes.</p>';return}
+  const W=doc.data(),t={};
+  const row=(uid,name)=>t[uid]||(t[uid]={uid,name,pts:0,codes:0,stars:0});
+  sc.docs.forEach(d=>{const x=d.data();if(isHeld(lucky,x.uid))return;const r=row(x.uid,x.name);r.pts+=x.points||0;r.codes++});
+  bon.filter(x=>x.round>=a&&x.round<=b&&!isHeld(lucky,x.uid)).forEach(x=>{const r=row(x.uid,x.name);r.pts+=x.pts||0;if(x.kind==='code')r.stars++});
+  const ord=(p,q)=>q.pts-p.pts||q.codes-p.codes||p.name.localeCompare(q.name);
+  const ids=new Set(W.div1.map(p=>p.uid));
+  const d1=W.div1.map(p=>({...row(p.uid,p.name)})).sort(ord), d2=Object.values(t).filter(p=>!ids.has(p.uid)&&p.codes>0).sort(ord);
+  const list=(rows,zone)=>'<ol class="board-list">'+rows.map((r,i)=>{
+      const tag=zone==='d1'&&i===rows.length-1&&rows.length>=DIV1_SIZE&&d2.length?'<span class="zone down" title="Relegation">▼</span>':zone==='d2'&&i===0?'<span class="zone up" title="Promotion">▲</span>':'';
+      return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${i+1}</span><span class="nm">${esc(r.name)}${tag}</span><span class="gs">${r.codes} code${r.codes===1?'':'s'}${r.stars?` · ⭐${r.stars}`:''}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
+  const mv=W.moves?`<p class="muted" style="font-size:13px;margin:0">Last week: <b>▲ ${esc(W.moves.promoted.name)}</b> promoted, <b>▼ ${esc(W.moves.relegated.name)}</b> relegated.</p>`:'';
+  el.innerHTML=`<p class="muted" style="font-size:13px;margin:0">This week's points (Monday to Sunday), including ⭐ bonuses. On Monday morning the bottom of Division 1 swaps with the top of Division 2.</p>${mv}
+    <div class="label" style="margin-top:12px">🏅 Division 1</div>${list(d1,'d1')}
+    <div class="label" style="margin-top:14px">Division 2</div>${d2.length?list(d2,'d2'):'<p class="muted">Nobody else has played this week yet.</p>'}`;
+}
 function inviteBanner(){
   if(!myInvites.length)return '';
   return myInvites.map(v=>`<div class="note invite" data-inv="${v.id}"><span><strong>${esc(v.from)}</strong> invited you to join <strong>${esc(v.leagueName)}</strong>.</span>
@@ -1364,8 +1413,9 @@ function showBoard(tab){
   const lg=scopeLeague();
   if(lg&&lbTab==='me')lbTab='today';
   const tabList=lg?[['today','This code'],['day','Today'],['all','All time'],['avg','Average']]:[['today','Code'],['day','Today'],['all','All time'],['avg','Avg'],['me','Me']];
-  const scope=user?`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],...myLeagues.map(l=>[l.id,l.name])].map(([v,l])=>`<option value="${v}"${v===(lg?lg.id:'')?' selected':''}>${esc(l)}</option>`).join('')}</select><button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button></div>`:'';
-  const tabs=`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
+  const isDiv=lbScope==='__div', cur=isDiv?'__div':(lg?lg.id:'');
+  const scope=`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],['__div','🏅 Weekly divisions'],...(user?myLeagues.map(l=>[l.id,l.name]):[])].map(([v,l])=>`<option value="${v}"${v===cur?' selected':''}>${esc(l)}</option>`).join('')}</select>${user?`<button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button>`:''}</div>`;
+  const tabs=isDiv?`${inviteBanner()}${scope}`:`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><span style="display:flex;gap:14px;white-space:nowrap"><button class="link" id="chPw">Change password</button><button class="link" id="signOut">Sign out</button></span></div>`:'';
   const lchat=lg?`<button class="btn chatbtn" id="lbChat" type="button">💬 ${esc(lg.name)} chat</button>`:'';
   openSheet(`<h2>Leaderboard</h2>${tabs}${who}<div id="lbBody"><p class="muted">Loading…</p></div>${lchat}`,sh=>{
@@ -1386,6 +1436,7 @@ async function fillBoard(el){
     if(user&&db)serverStats().then(st=>{if(st&&el.isConnected&&lbTab==='me')el.innerHTML=myStatsHTML(st)}).catch(e=>console.warn(e));
     return}
   if(!db){el.innerHTML='<p class="muted">The leaderboard is offline right now.</p>';return}
+  if(lbScope==='__div')return fillDivisions(el);
   let rows=[], held=0;
   const lg=scopeLeague();
   try{
@@ -1397,10 +1448,11 @@ async function fillBoard(el){
       held=q.docs.map(d=>d.data()).filter(d=>isHeld(lucky,d.uid)).length;
       rows=q.docs.map(d=>d.data()).filter(d=>!isHeld(lucky,d.uid)).sort((a,b)=>b.points-a.points||t(a)-t(b)||a.guesses-b.guesses)
         
-        .map(d=>({uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':'')+(d.clue?' 💡':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}));
+        .map((d,i,arr)=>{const best=arr.filter(x=>x.won).sort((a,b)=>a.guesses-b.guesses||t(a)-t(b))[0];const lead=best&&d.won&&d.guesses===best.guesses&&t(d)===t(best);
+          return {uid:d.uid,name:d.name+(d.won&&d.guesses===1?' 🍀':'')+(d.clue?' 💡':'')+(lead?' ⭐':''),pts:d.points,meta:(d.won?`${d.guesses}/7`:'X/7')+(d.secs?` · ${fmtTime(d.secs)}`:'')}});
     }else if(lbTab==='day'){
       /* Today: both of today's codes added up per player. */
-      const [q,lucky]=await Promise.all([db.collection('scores').where('day','in',todayKeys()).get(),loadLucky(true).catch(()=>({}))]);
+      const [q,lucky,bon]=await Promise.all([db.collection('scores').where('day','in',todayKeys()).get(),loadLucky(true).catch(()=>({})),loadBonus()]);
       const by={};
       q.docs.map(d=>d.data()).forEach(d=>{
         if(isHeld(lucky,d.uid))return;
@@ -1409,8 +1461,9 @@ async function fillBoard(el){
         if(d.won&&d.guesses===1)p.lucky=true;if(d.clue)p.clue=true;
       });
       held=new Set(q.docs.map(d=>d.data().uid).filter(u=>isHeld(lucky,u))).size;
+      bon.filter(b=>b.kind==='code'&&todayKeys().includes(b.round)).forEach(b=>{const p=by[b.uid];if(p){p.pts+=b.pts;p.star=(p.star||0)+1}});
       rows=Object.values(by).sort((a,b)=>b.pts-a.pts||b.codes-a.codes||a.secs-b.secs)
-        .map(p=>({uid:p.uid,name:p.name+(p.lucky?' 🍀':'')+(p.clue?' 💡':''),pts:p.pts,meta:`${p.codes} code${p.codes>1?'s':''}`+(p.timed&&p.secs?` · ${fmtTime(p.secs)}`:'')}));
+        .map(p=>({uid:p.uid,name:p.name+(p.lucky?' 🍀':'')+(p.clue?' 💡':'')+(p.star?' ⭐'.repeat(p.star):''),pts:p.pts,meta:`${p.codes} code${p.codes>1?'s':''}`+(p.timed&&p.secs?` · ${fmtTime(p.secs)}`:'')}));
     }else if(lbTab==='avg'){
       /* Everyone's average: points per code from each player's running totals (cheap: one read per player). */
       const [q,lucky]=await Promise.all([db.collection('players').orderBy('total','desc').limit(300).get(),loadLucky().catch(()=>({}))]);
@@ -1422,12 +1475,12 @@ async function fillBoard(el){
       const me=user&&ps.find(p=>p.uid===user.uid&&!ok(p));
       if(me)rows.push({uid:me.uid,name:me.name,pts:'–',unranked:true,meta:`${me.played}/${EV_AVG_MIN} played`});
     }else{
-      const [q,atts,lucky]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[]),loadLucky().catch(()=>({}))]);
+      const [q,atts,lucky,bon]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[]),loadLucky().catch(()=>({})),loadBonus()]);
       held=q.docs.filter(d=>isHeld(lucky,d.id)).length;
       rows=q.docs.map(d=>({uid:d.id,...d.data()})).filter(d=>!isHeld(lucky,d.uid))
-        .map(d=>({uid:d.uid,name:d.name,played:d.played,pts:Math.max(0,d.total+chNet(d.uid,atts)),ch:atts.some(a=>a.uid===d.uid||a.setter===d.uid)}))
+        .map(d=>({uid:d.uid,name:d.name,played:d.played,pts:Math.max(0,d.total+chNet(d.uid,atts)+bonusSum(d.uid,bon)),stars:bon.filter(b=>b.uid===d.uid&&b.kind==='code').length,ch:atts.some(a=>a.uid===d.uid||a.setter===d.uid)}))
         .filter(d=>d.played>0||d.ch).sort((a,b)=>b.pts-a.pts).slice(0,50)
-        .map(d=>({...d,meta:`${d.played} played`}));
+        .map(d=>({...d,meta:`${d.played} played${d.stars?` · ⭐${d.stars}`:''}`}));
     }
   }catch(e){console.warn(e);el.innerHTML='<p class="muted">Could not load the leaderboard. Check your connection.</p>';return}
   if(lg){if(lbTab!=='all')rows=rows.filter(r=>lg.members.includes(r.uid));held=0}
@@ -1438,7 +1491,8 @@ async function fillBoard(el){
     html='<ol class="board-list">'+rows.map((r,i)=>{if(r.pts!==prev){pos=i+1;prev=r.pts}
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${r.unranked?'–':pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
-  if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: ${T1} and ${T2}.</p>`+html;
+  if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: ${T1} and ${T2}. ⭐ = best on a code (+${CODE_BONUS}).</p>`+html;
+  if(lbTab==='today'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">⭐ Best so far: fewest goes, then fastest. When the code closes, the best wins +${CODE_BONUS} pts.</p>`+html;
   if(!lg&&lbTab==='avg')html=`<p class="muted" style="font-size:13px;margin:0">Average points per code (a miss counts as 0, challenges don't count). Play at least ${EV_AVG_MIN} codes to be ranked.</p>`+html;
   if(lg&&lbTab==='avg')html=`<p class="muted" style="font-size:13px;margin:0">Average points per code since each player joined ${esc(lg.name)} (a miss counts as 0, challenges don't count). Play at least ${LG_AVG_MIN} codes to be ranked.</p>`+html;
   if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from daily codes since each player joined ${esc(lg.name)} (challenges don't count here). Avg is the average number of goes to crack a code.</p>`+html;
@@ -1509,7 +1563,7 @@ function attemptDelta(a,uid){
 }
 async function pointsOf(uid){
   const p=await db.collection('players').doc(uid).get();
-  return Math.max(0,(p.exists?p.data().total:0)+chNet(uid,attemptsCache));
+  return Math.max(0,(p.exists?p.data().total:0)+chNet(uid,attemptsCache)+bonusSum(uid,await loadBonus()));
 }
 function chNet(uid,atts){return (atts||[]).reduce((s,a)=>s+attemptDelta(a,uid),0)}
 function myPoints(){return Math.max(0,(player?player.total:0)+chNet(user&&user.uid,attemptsCache))}
@@ -1865,8 +1919,8 @@ if(IS_BETA)$('betaTag').hidden=false;
 if(auth)auth.onAuthStateChanged(async u=>{user=u;if(!u)player=null;boardLeaguesLoaded=false;try{await switchUser()}catch(e){console.warn(e)}authReadyResolve();if(u)loadLeagues().catch(e=>console.warn(e));else{myLeagues=[];myInvites=[]}if(u)setTimeout(maybeAskPush,1500)});
 else authReadyResolve();
 const link=/^#c([A-Za-z0-9]{10,40})$/.exec(location.hash);
-const hashView=location.hash==='#mine'?'mine':location.hash==='#leagues'?'leagues':location.hash==='#chat'?'chat':'';
-if(hashView){try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>authReady.then(()=>hashView==='mine'?showChallenges('mine'):hashView==='chat'?showChat():showLeagues()),300)}
+const hashView=location.hash==='#mine'?'mine':location.hash==='#leagues'?'leagues':location.hash==='#chat'?'chat':location.hash==='#divisions'?'divisions':'';
+if(hashView){try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>authReady.then(()=>hashView==='mine'?showChallenges('mine'):hashView==='chat'?showChat():hashView==='divisions'?(setScope('__div'),showBoard()):showLeagues()),300)}
 if(hashView){}else if(link){chFocus=link[1];try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>showChallenges('open'),300)}
 else if(isNewHome())authReady.then(()=>{if(!user&&!modal)showMoved();else store.set('tally.movedSeen',1)});
 else if(!prefs.seenHelp)setTimeout(showHelp,300);

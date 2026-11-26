@@ -153,6 +153,101 @@ if (lp.h >= 18 && lp.h < 20 && meta.lastCountDay !== `${lp.y}-${lp.m}-${lp.d}`) 
   }
 }
 
+// ---- 4. Best on each code: +5 pts, and +10 more for being best on both codes of a day ----
+// A code closes when the next one starts. Best = cracked it in the fewest goes, then the fastest time.
+// Exact ties all get the bonus. Players on a fair-play hold can't win it. Written to the "bonus" collection,
+// which the game adds into All time, league All time, Today and the weekly divisions (not the averages).
+const R_BASE = 100000, LUCKY_HOLD = 3, CODE_BONUS = 5, DAY_BONUS = 10;
+const dayOf = r => Math.floor((r - 1) / 2);              // rounds 2d+1 (6am) and 2d+2 (8pm) belong to day d
+async function heldSet(rkey) {
+  const [q, cl] = await Promise.all([db.collection('scores').where('day', '>=', rkey - 13).where('day', '<=', rkey).get(), db.collection('clears').get()]);
+  const cleared = {}; cl.docs.forEach(d => cleared[d.id] = +d.data().day || 0);
+  const n = {}; q.docs.forEach(d => { const x = d.data(); if (x.won && x.guesses === 1 && x.day - R_BASE > (cleared[x.uid] || 0)) n[x.uid] = (n[x.uid] || 0) + 1; });
+  return new Set(Object.keys(n).filter(u => n[u] >= LUCKY_HOLD));
+}
+async function codeWinners(r) {
+  const rkey = R_BASE + r, held = await heldSet(rkey);
+  const sc = (await db.collection('scores').where('day', '==', rkey).get()).docs.map(d => d.data()).filter(x => x.won && !held.has(x.uid));
+  if (!sc.length) return [];
+  const key = x => [x.guesses, x.secs || 1e9];
+  sc.sort((a, b) => key(a)[0] - key(b)[0] || key(a)[1] - key(b)[1]);
+  const best = key(sc[0]);
+  return sc.filter(x => key(x)[0] === best[0] && key(x)[1] === best[1]);
+}
+const bonusStart = meta.lastBonusRound != null ? meta.lastBonusRound + 1 : R - 1;
+for (let r = Math.max(1, bonusStart); r < R; r++) {
+  const win = await codeWinners(r), rkey = R_BASE + r;
+  for (const x of win) {
+    await db.collection('bonus').doc(`c${rkey}_${x.uid}`).set({ kind: 'code', round: rkey, day: dayOf(r), uid: x.uid, name: x.name, pts: CODE_BONUS, guesses: x.guesses, secs: x.secs || 0, ts: x.ts || FV.serverTimestamp() });
+    const who = (await players()).find(d => d.uid === x.uid && d.codes !== false);
+    if (who) await send(who, { title: `⭐ Best on code No. ${r}! +${CODE_BONUS} pts`, body: `Fewest goes${x.secs ? ' and fastest time' : ''}: ${x.guesses}/7${x.secs ? ' in ' + Math.floor(x.secs / 60) + ':' + String(x.secs % 60).padStart(2, '0') : ''}.`, tag: `bonus-${rkey}` });
+  }
+  console.log(`Code No. ${r} best: ${win.map(x => x.name).join(', ') || 'nobody cracked it'}.`);
+  if (r % 2 === 0) {                                     // the evening code just closed: check the whole day
+    const morning = (await db.collection('bonus').where('round', '==', rkey - 1).get()).docs.map(d => d.data().uid);
+    for (const x of win.filter(x => morning.includes(x.uid))) {
+      await db.collection('bonus').doc(`d${dayOf(r)}_${x.uid}`).set({ kind: 'day', day: dayOf(r), round: rkey, uid: x.uid, name: x.name, pts: DAY_BONUS, ts: x.ts || FV.serverTimestamp() });
+      const who = (await players()).find(d => d.uid === x.uid && d.codes !== false);
+      if (who) await send(who, { title: `🌟 Best on both codes yesterday! +${DAY_BONUS} bonus`, body: `That's ${2 * CODE_BONUS + DAY_BONUS} bonus points for the day.`, tag: `daybonus-${dayOf(r)}` });
+      console.log(`Day ${dayOf(r)} double: ${x.name}.`);
+    }
+  }
+  update.lastBonusRound = r;
+}
+
+// ---- 5. Weekly divisions: Division 1 has 5 players, Division 2 is everyone else who plays ----
+// Weeks run Monday to Sunday (UK). When a new week starts (Monday 6am, once Sunday's 8pm code has closed),
+// the bottom of Division 1 swaps with the top of Division 2. Points = code points + bonuses that week.
+const weekOf = d => Math.floor((d + 4) / 7);             // day 0 (Fri 23 Oct 2026) is in week 0, Mon 26 Oct starts week 1
+const weekRounds = w => { const d0 = 7 * w - 4; return [R_BASE + 2 * d0 + 1, R_BASE + 2 * (d0 + 6) + 2]; };
+const DIV1 = 5;
+async function weekTable(w) {
+  const [a, b] = weekRounds(w);
+  const [sc, bo, held] = await Promise.all([
+    db.collection('scores').where('day', '>=', a).where('day', '<=', b).get(),
+    db.collection('bonus').where('round', '>=', a).where('round', '<=', b).get(),
+    heldSet(b)]);
+  const t = {};
+  const row = (uid, name) => t[uid] || (t[uid] = { uid, name, pts: 0, codes: 0 });
+  sc.docs.forEach(d => { const x = d.data(); if (held.has(x.uid)) return; const r = row(x.uid, x.name); r.pts += x.points || 0; r.codes++; });
+  bo.docs.forEach(d => { const x = d.data(); if (held.has(x.uid)) return; row(x.uid, x.name).pts += x.pts || 0; });
+  return t;
+}
+const wkNow = weekOf(dayOf(R));
+const wkRef = db.collection('weekly').doc(`w${wkNow}`);
+if (!(await wkRef.get()).exists) {
+  const prevDoc = await db.collection('weekly').doc(`w${wkNow - 1}`).get();
+  let div1, moves = null;
+  if (!prevDoc.exists) {
+    // First week: the top 5 on the All time table (code points + challenges + bonuses), not counting anyone on hold.
+    const [ps, atts, bon, held] = await Promise.all([db.collection('players').get(), db.collection('attempts').get(), db.collection('bonus').get(), heldSet(R_BASE + R)]);
+    const extra = {};
+    atts.docs.forEach(d => { const a = d.data(), o = a.status !== 'done' ? 'playing' : a.won ? ((a.late ? a.pay === true : a.pay !== false) ? 'win' : 'void') : (a.late ? 'lateloss' : 'loss');
+      extra[a.uid] = (extra[a.uid] || 0) + (o === 'win' ? a.stake : o === 'void' ? 0 : -a.stake);
+      if (a.setter) extra[a.setter] = (extra[a.setter] || 0) + (o === 'win' ? -a.stake : o === 'loss' ? a.stake : 0); });
+    bon.docs.forEach(d => { const b = d.data(); extra[b.uid] = (extra[b.uid] || 0) + (b.pts || 0); });
+    div1 = ps.docs.map(d => ({ uid: d.id, name: d.data().name, pts: Math.max(0, (d.data().total || 0) + (extra[d.id] || 0)), played: d.data().played || 0 }))
+      .filter(p => p.played > 0 && !held.has(p.uid)).sort((a, b) => b.pts - a.pts).slice(0, DIV1).map(({ uid, name }) => ({ uid, name }));
+  } else {
+    const prev = prevDoc.data(), t = await weekTable(wkNow - 1), inDiv1 = new Set(prev.div1.map(p => p.uid));
+    const score = p => (t[p.uid] || { pts: 0, codes: 0 });
+    const d1 = prev.div1.map(p => ({ ...p, ...score(p), name: (t[p.uid] || p).name })).sort((a, b) => b.pts - a.pts || b.codes - a.codes);
+    const d2 = Object.values(t).filter(p => !inDiv1.has(p.uid) && p.codes > 0).sort((a, b) => b.pts - a.pts || b.codes - a.codes);
+    div1 = d1.map(({ uid, name }) => ({ uid, name }));
+    if (d2.length && d1.length >= DIV1) {
+      const down = div1.pop(), up = { uid: d2[0].uid, name: d2[0].name };
+      div1.push(up); moves = { promoted: up, relegated: down };
+      const tell = async (u, title, body) => { const who = (await players()).find(d => d.uid === u.uid && d.codes !== false); if (who) await send(who, { title, body, tag: `div-${wkNow}`, url: SITE + '#divisions' }); };
+      await tell(up, '🏅 Promoted to Division 1!', `You topped Division 2 last week. Can you stay up?`);
+      await tell(down, '⬇️ Relegated to Division 2', `You finished bottom of Division 1 last week. Win Division 2 to go back up.`);
+    } else if (d1.length < DIV1) {
+      for (const p of d2) { if (div1.length >= DIV1) break; div1.push({ uid: p.uid, name: p.name }); }
+    }
+  }
+  await wkRef.set({ week: wkNow, div1, moves, created: FV.serverTimestamp() });
+  console.log(`Week ${wkNow} divisions: ${div1.map(p => p.name).join(', ')}${moves ? ` (up: ${moves.promoted.name}, down: ${moves.relegated.name})` : ''}.`);
+}
+
 // ---- 3. 6pm round-up: challenges waiting for you ----
 const today = `${lp.y}-${String(lp.m).padStart(2, '0')}-${String(lp.d).padStart(2, '0')}`;
 if (lp.h >= 18 && lp.h < 20 && meta.lastDigest !== today) {
