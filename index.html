@@ -1209,7 +1209,7 @@ async function leagueJoined(lg){
   return j;
 }
 /* All time in a league: points from codes and challenges since each member joined. */
-const LG_AVG_MIN=3;
+const LG_AVG_MIN=3, EV_AVG_MIN=5;   // codes needed to be ranked on an Average table (league / everyone)
 async function leagueAllTime(lg,lucky,mode){
   /* League tables count daily codes only (not challenges), from when each player joined,
      with how many goes they take on average to crack a code. */
@@ -1363,8 +1363,7 @@ function showBoard(tab){
   if(tab)lbTab=tab;
   const lg=scopeLeague();
   if(lg&&lbTab==='me')lbTab='today';
-  if(!lg&&lbTab==='avg')lbTab='all';
-  const tabList=lg?[['today','This code'],['day','Today'],['all','All time'],['avg','Average']]:[['today','This code'],['day','Today'],['all','All time'],['me','My stats']];
+  const tabList=lg?[['today','This code'],['day','Today'],['all','All time'],['avg','Average']]:[['today','Code'],['day','Today'],['all','All time'],['avg','Avg'],['me','Me']];
   const scope=user?`<div class="scope"><select id="lbScope" aria-label="Which table">${[['','Everyone'],...myLeagues.map(l=>[l.id,l.name])].map(([v,l])=>`<option value="${v}"${v===(lg?lg.id:'')?' selected':''}>${esc(l)}</option>`).join('')}</select><button class="btn small" id="lbLeagues" type="button">🏆 Leagues${myInvites.length?` <span class="dot">${myInvites.length}</span>`:''}</button></div>`:'';
   const tabs=`${inviteBanner()}${scope}<div class="tabs" role="tablist" style="--tabs:${tabList.length}">${tabList.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${lbTab===k}">${l}</button>`).join('')}</div>`;
   const who=user&&player?`<div class="who"><span>Playing as <strong>${esc(player.name)}</strong></span><span style="display:flex;gap:14px;white-space:nowrap"><button class="link" id="chPw">Change password</button><button class="link" id="signOut">Sign out</button></span></div>`:'';
@@ -1412,6 +1411,16 @@ async function fillBoard(el){
       held=new Set(q.docs.map(d=>d.data().uid).filter(u=>isHeld(lucky,u))).size;
       rows=Object.values(by).sort((a,b)=>b.pts-a.pts||b.codes-a.codes||a.secs-b.secs)
         .map(p=>({uid:p.uid,name:p.name+(p.lucky?' 🍀':'')+(p.clue?' 💡':''),pts:p.pts,meta:`${p.codes} code${p.codes>1?'s':''}`+(p.timed&&p.secs?` · ${fmtTime(p.secs)}`:'')}));
+    }else if(lbTab==='avg'){
+      /* Everyone's average: points per code from each player's running totals (cheap: one read per player). */
+      const [q,lucky]=await Promise.all([db.collection('players').orderBy('total','desc').limit(300).get(),loadLucky().catch(()=>({}))]);
+      held=q.docs.filter(d=>isHeld(lucky,d.id)).length;
+      const ps=q.docs.map(d=>({uid:d.id,...d.data()})).filter(d=>!isHeld(lucky,d.uid)&&d.played>0);
+      const per=p=>p.total/p.played, ok=p=>p.played>=EV_AVG_MIN;
+      rows=ps.filter(ok).sort((a,b)=>per(b)-per(a)||b.played-a.played).slice(0,50)
+        .map(p=>({uid:p.uid,name:p.name,pts:per(p).toFixed(1),meta:`${p.played} played`}));
+      const me=user&&ps.find(p=>p.uid===user.uid&&!ok(p));
+      if(me)rows.push({uid:me.uid,name:me.name,pts:'–',unranked:true,meta:`${me.played}/${EV_AVG_MIN} played`});
     }else{
       const [q,atts,lucky]=await Promise.all([db.collection('players').orderBy('total','desc').limit(200).get(),loadAttempts().catch(()=>[]),loadLucky().catch(()=>({}))]);
       held=q.docs.filter(d=>isHeld(lucky,d.id)).length;
@@ -1430,6 +1439,7 @@ async function fillBoard(el){
       return `<li class="${user&&r.uid===user.uid?'me':''}"><span class="pos">${r.unranked?'–':pos}</span><span class="nm">${esc(r.name)}</span><span class="gs">${r.meta}</span><span class="pt">${r.pts}</span></li>`}).join('')+'</ol>';
   }
   if(lbTab==='day'&&rows.length)html=`<p class="muted" style="font-size:13px;margin:0">Both of today's codes added up: ${T1} and ${T2}.</p>`+html;
+  if(!lg&&lbTab==='avg')html=`<p class="muted" style="font-size:13px;margin:0">Average points per code (a miss counts as 0, challenges don't count). Play at least ${EV_AVG_MIN} codes to be ranked.</p>`+html;
   if(lg&&lbTab==='avg')html=`<p class="muted" style="font-size:13px;margin:0">Average points per code since each player joined ${esc(lg.name)} (a miss counts as 0, challenges don't count). Play at least ${LG_AVG_MIN} codes to be ranked.</p>`+html;
   if(lg&&lbTab==='all')html=`<p class="muted" style="font-size:13px;margin:0">Points from daily codes since each player joined ${esc(lg.name)} (challenges don't count here). Avg is the average number of goes to crack a code.</p>`+html;
   if(held)html+=`<p class="muted" style="font-size:12px">${held} player${held>1?'s':''} on hold for too many first-guess wins.</p>`;
